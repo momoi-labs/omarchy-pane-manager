@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""Emit, as JSON lines, where a dragged pane would land if dropped right now.
+
+Hyprland exposes no drag event, but it does not need to: dragging a *tiled*
+window with the move bind flips it to floating for the duration of the drag
+(DragController.cpp, `changeFloatingMode` in updateDragWindow / dragEnd), and
+that flip is announced on socket2 as `changefloatingmode`. So drag start and
+drag end arrive as push events, and the cursor is only polled in between.
+
+The landing side is decided by Hyprland in DwindleAlgorithm.cpp:
+
+    DELTA       = cursor - targetBoxCenter
+    PROPORTIONS = box.h / box.w
+    |DELTA.y / DELTA.x| < PROPORTIONS -> left/right by sign of DELTA.x
+                                    else -> up/down    by sign of DELTA.y
+
+which cuts the target along its own diagonals. This mirrors that exactly; if
+Hyprland changes the rule, this lies, so it is pinned to a version below.
+"""
+import json, os, socket, sys, time
+
+HYPRLAND_RULE_VERIFIED_ON = "0.56.2"
+POLL_HZ = 60
+
+XDG = os.environ.get("XDG_RUNTIME_DIR", "")
+SIG = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+BASE = f"{XDG}/hypr/{SIG}"
+
+
+def request(cmd):
+    """One request on Hyprland's command socket; it closes after each reply."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.connect(f"{BASE}/.socket.sock")
+        s.sendall(cmd.encode())
+        chunks = []
+        while True:
+            b = s.recv(65536)
+            if not b:
+                break
+            chunks.append(b)
+    return b"".join(chunks)
+
+
+def request_json(cmd):
+    try:
+        return json.loads(request("j/" + cmd))
+    except Exception:
+        return None
+
+
+def emit(obj):
+    sys.stdout.write(json.dumps(obj, separators=(",", ":")) + "\n")
+    sys.stdout.flush()
+
+
+def option(name, key):
+    v = request_json(f"getoption {name}")
+    return v.get(key) if isinstance(v, dict) else None
+
+
+def landing_box(cursor, box, split_ratio):
+    """Hyprland's rule, then the half of `box` the new pane would occupy."""
+    x, y, w, h = box
+    if w <= 0 or h <= 0:
+        return None
+    cx, cy = x + w / 2.0, y + h / 2.0
+    dx, dy = cursor[0] - cx, cursor[1] - cy
+    proportions = h / w
+
+    # Vertical centre line: dx == 0 has infinite slope, so it is up/down.
+    horizontal = abs(dy / dx) < proportions if dx else False
+
+    if horizontal:
+        first = w / 2.0 * split_ratio
+        if dx > 0:  # lands right, taking the second child
+            return ("right", (x + first, y, w - first, h))
+        return ("left", (x, y, first, h))
+
+    first = h / 2.0 * split_ratio
+    if dy > 0:  # lands below
+        return ("down", (x, y + first, w, h - first))
+    return ("up", (x, y, w, first))
+
+
+def window_box(c):
+    return (c["at"][0], c["at"][1], c["size"][0], c["size"][1])
+
+
+def contains(box, p):
+    x, y, w, h = box
+    return x <= p[0] <= x + w and y <= p[1] <= y + h
+
+
+def pick_target(clients, cursor, dragged_addr, workspace_id, use_active):
+    """Mirror DwindleAlgorithm's OPENINGON choice."""
+    tiled = [c for c in clients
+             if not c["floating"] and c["workspace"]["id"] == workspace_id
+             and c["address"] != dragged_addr and c["mapped"]]
+    if not tiled:
+        return None
+    if use_active:
+        # dwindle:use_active_for_splits -> the focused window, not the hovered
+        # one. focusHistoryID 0 is the focused window; the dragged one is
+        # excluded above, so the lowest remaining id is the last focused.
+        return min(tiled, key=lambda c: c.get("focusHistoryID", 1 << 30))
+    for c in tiled:
+        if contains(window_box(c), cursor):
+            return c
+    return None
+
+
+def main():
+    if not XDG or not SIG:
+        emit({"error": "not running under Hyprland"})
+        return 1
+
+    sock2 = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock2.connect(f"{BASE}/.socket2.sock")
+    sock2.settimeout(0)
+
+    dragging = None
+    buf = b""
+    period = 1.0 / POLL_HZ
+
+    while True:
+        try:
+            chunk = sock2.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                ev = line.decode(errors="replace")
+                if not ev.startswith("changefloatingmode>>"):
+                    continue
+                addr, mode = (ev.split(">>", 1)[1].split(",") + ["", ""])[:2]
+                addr = "0x" + addr if not addr.startswith("0x") else addr
+
+                if mode == "1" and dragging is None:
+                    # A tiled window just went floating. A drag centres it on
+                    # the cursor; a manual float toggle leaves it put. That is
+                    # what tells the two apart.
+                    cur = request_json("cursorpos")
+                    cl = request_json("clients") or []
+                    me = next((c for c in cl if c["address"] == addr), None)
+                    if not me or not cur:
+                        continue
+                    x, y, w, h = window_box(me)
+                    near = abs((x + w / 2) - cur["x"]) < 8 and abs((y + h / 2) - cur["y"]) < 8
+                    # With precise_mouse_move off Hyprland only tiles left or
+                    # right, so a four-way indicator would be promising
+                    # something it will not deliver. Stay quiet instead.
+                    if near and option("dwindle:precise_mouse_move", "bool"):
+                        dragging = {"addr": addr, "ws": me["workspace"]["id"]}
+                elif mode == "0" and dragging and dragging["addr"] == addr:
+                    dragging = None
+                    emit({"dragging": False})
+        except BlockingIOError:
+            pass
+        except (OSError, ValueError):
+            pass
+
+        if dragging is None:
+            time.sleep(0.05)
+            continue
+
+        cur = request_json("cursorpos")
+        clients = request_json("clients")
+        if not cur or clients is None:
+            time.sleep(period)
+            continue
+
+        use_active = bool(option("dwindle:use_active_for_splits", "bool"))
+        ratio = option("dwindle:default_split_ratio", "float") or 1.0
+        target = pick_target(clients, (cur["x"], cur["y"]), dragging["addr"],
+                             dragging["ws"], use_active)
+        if target:
+            res = landing_box((cur["x"], cur["y"]), window_box(target), ratio)
+            if res:
+                direction, (bx, by, bw, bh) = res
+                emit({"dragging": True, "dir": direction,
+                      "x": round(bx), "y": round(by),
+                      "w": round(bw), "h": round(bh)})
+        time.sleep(period)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

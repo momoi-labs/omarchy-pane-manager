@@ -7,10 +7,12 @@
   "license": "MIT",
   "description": "Manage tiled panes from the bar: resize them by dragging the divider with your mouse, set the border thickness and corner style, and put a mangled layout back the way it was.",
   "kinds": [
-    "bar-widget"
+    "bar-widget",
+    "panel"
   ],
   "entryPoints": {
-    "barWidget": "PaneManager.qml"
+    "barWidget": "PaneManager.qml",
+    "panel": "DropIndicator.qml"
   },
   "barWidget": {
     "displayName": "Pane Manager",
@@ -53,5 +55,6 @@
         "description": "Upper bound of the border thickness field."
       }
     ]
-  }
+  },
+  "keepLoaded": true
 }

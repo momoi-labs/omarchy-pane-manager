@@ -92,6 +92,34 @@ $BIN corners <px>         # 0 = square
 $BIN reset [--all]
 ```
 
+## Drop indicator
+
+With `dwindle:precise_mouse_move` on, dragging a pane and dropping it on another
+tiles it above, below, or beside the target depending on where the cursor is —
+but Hyprland draws nothing to say which. This plugin shades the half the pane is
+about to occupy, live, while you drag.
+
+Two things make that possible without a compositor plugin:
+
+- **Drag detection with no polling.** Hyprland publishes no drag event, but
+  dragging a *tiled* window flips it to floating for the duration of the drag
+  (`DragController.cpp`, `changeFloatingMode` in `updateDragWindow`/`dragEnd`),
+  and that flip is announced on socket2 as `changefloatingmode`. Drag start and
+  end arrive as push events; the cursor is only polled in between. A manual
+  float toggle is told apart from a drag by the fact that a drag first centres
+  the window on the cursor.
+- **The landing side is reproducible.** `DwindleAlgorithm.cpp` decides it from
+  the cursor against the target box's centre, with the box's own diagonals as
+  the threshold. `bin/drop-indicator` mirrors that, and the indicator paints the
+  *result* — the half the new pane gets — rather than the triangles that pick it.
+
+Because that rule is mirrored rather than queried, it is pinned to a Hyprland
+version in the helper (`HYPRLAND_RULE_VERIFIED_ON`). If the compositor changes
+how it decides, the indicator lies, which is worse than showing nothing — so it
+is worth rechecking on major Hyprland updates.
+
+The overlay's input region is empty, so it can never swallow the drag it draws.
+
 ## What this plugin does not do
 
 Moving panes with the mouse is already Hyprland's, and there is no
