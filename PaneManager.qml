@@ -52,6 +52,12 @@ Panel {
   function resetWorkspace() { run(["reset"], function() { root.statusMessage = "Current workspace reset" }) }
   function resetAll() { run(["reset", "--all"], function() { root.statusMessage = "All workspaces reset" }) }
 
+  // The drop indicator rides along with the bar widget rather than being a
+  // `panel` entry point of its own. Declaring a second kind made the plugin id
+  // resolve to that panel, so `omarchy-shell shell toggle <id>` — the documented
+  // way to bind a key to this — stopped reaching the bar widget entirely.
+  DropIndicator {}
+
   Component.onCompleted: refresh()
   onOpenedChanged: if (opened) { statusMessage = ""; refresh() }
 
@@ -113,9 +119,17 @@ Panel {
       }
 
       if (done) done()
-      // Actions print nothing, so read the state back to catch up. `reset` in
-      // particular reloads the Hyprland config and can change everything.
-      if (helperProc.action !== "state") Qt.callLater(root.refresh)
+      if (helperProc.action !== "state") {
+        // Actions print nothing, so read the state back to catch up. `reset` in
+        // particular reloads the Hyprland config and can change everything.
+        Qt.callLater(root.refresh)
+
+        // The shell mirrors decoration:rounding into Style.cornerRadius, but
+        // only re-reads it at startup and on a theme change — so without this
+        // its own panels keep the old corners after Corners is switched, and
+        // the panel saying "Square" is itself still round. Debounced upstream.
+        Style.scheduleRefresh()
+      }
     }
   }
 
