@@ -22,6 +22,7 @@ Item {
   property real dropY: 0
   property real dropW: 0
   property real dropH: 0
+  property real dropRadius: 0
 
   function apply(line) {
     var text = String(line || "").trim()
@@ -37,6 +38,7 @@ Item {
     root.dropY = Number(data.y) || 0
     root.dropW = Number(data.w) || 0
     root.dropH = Number(data.h) || 0
+    root.dropRadius = Number(data.r) || 0
     root.dragging = true
   }
 
@@ -78,7 +80,9 @@ Item {
         color: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.22)
         border.width: Math.max(2, Style.space(2))
         border.color: Color.accent
-        radius: Style.cornerRadius
+        // Corner radius comes from Hyprland's decoration:rounding, so the
+        // preview has the shape the pane will actually take.
+        radius: root.dropRadius
 
         Behavior on x { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
         Behavior on y { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }

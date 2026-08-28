@@ -123,6 +123,9 @@ version in the helper (`HYPRLAND_RULE_VERIFIED_ON`). If the compositor changes
 how it decides, the indicator lies, which is worse than showing nothing — so it
 is worth rechecking on major Hyprland updates.
 
+The shaded rectangle takes its corner radius from `decoration:rounding`, so the
+preview has the shape the pane will actually get rather than the shell theme's.
+
 The overlay's input region is empty, so it can never swallow the drag it draws.
 
 ## What this plugin does not do

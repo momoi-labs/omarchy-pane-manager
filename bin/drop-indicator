@@ -151,7 +151,16 @@ def main():
                     # right, so a four-way indicator would be promising
                     # something it will not deliver. Stay quiet instead.
                     if near and option("dwindle:precise_mouse_move", "bool"):
-                        dragging = {"addr": addr, "ws": me["workspace"]["id"]}
+                        dragging = {
+                            "addr": addr,
+                            "ws": me["workspace"]["id"],
+                            "use_active": bool(option("dwindle:use_active_for_splits", "bool")),
+                            "ratio": option("dwindle:default_split_ratio", "float") or 1.0,
+                            # The indicator draws the shape the pane will have,
+                            # so it takes its corners from Hyprland, not the
+                            # shell theme.
+                            "rounding": option("decoration:rounding", "int") or 0,
+                        }
                 elif mode == "0" and dragging and dragging["addr"] == addr:
                     dragging = None
                     emit({"dragging": False})
@@ -170,17 +179,17 @@ def main():
             time.sleep(period)
             continue
 
-        use_active = bool(option("dwindle:use_active_for_splits", "bool"))
-        ratio = option("dwindle:default_split_ratio", "float") or 1.0
         target = pick_target(clients, (cur["x"], cur["y"]), dragging["addr"],
-                             dragging["ws"], use_active)
+                             dragging["ws"], dragging["use_active"])
         if target:
-            res = landing_box((cur["x"], cur["y"]), window_box(target), ratio)
+            res = landing_box((cur["x"], cur["y"]), window_box(target),
+                              dragging["ratio"])
             if res:
                 direction, (bx, by, bw, bh) = res
                 emit({"dragging": True, "dir": direction,
                       "x": round(bx), "y": round(by),
-                      "w": round(bw), "h": round(bh)})
+                      "w": round(bw), "h": round(bh),
+                      "r": dragging["rounding"]})
         time.sleep(period)
     return 0
 
