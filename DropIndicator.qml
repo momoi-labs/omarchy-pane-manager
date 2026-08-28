@@ -11,10 +11,10 @@ Item {
   id: root
 
   property QtObject bar: null
-  property string moduleName: "me.swebber.pane-manager"
+  property string moduleName: "dev.momoi-labs.pane-manager"
   property var settings: ({})
 
-  readonly property string helper: Quickshell.env("HOME") + "/.config/omarchy/plugins/me.swebber.pane-manager/bin/drop-indicator"
+  readonly property string helper: Quickshell.env("HOME") + "/.config/omarchy/plugins/dev.momoi-labs.pane-manager/bin/drop-indicator"
 
   property bool dragging: false
   property string direction: ""

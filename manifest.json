@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "me.swebber.pane-manager",
+  "id": "dev.momoi-labs.pane-manager",
   "name": "Pane Manager",
   "version": "1.0.0",
   "author": "Sebastian Webber",

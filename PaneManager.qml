@@ -14,7 +14,7 @@ import qs.Commons
 // dwindle tree has no built-in undo — gives you a way to put the ratios back.
 Panel {
   id: root
-  moduleName: "me.swebber.pane-manager"
+  moduleName: "dev.momoi-labs.pane-manager"
   ipcTarget: moduleName
 
   readonly property string helper: Quickshell.env("HOME") + "/.config/omarchy/plugins/" + moduleName + "/bin/pane-manager"

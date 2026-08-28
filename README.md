@@ -44,7 +44,7 @@ switch are all reliable ways back to your configured state.
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/<you>/omarchy-pane-manager.git --enable
+omarchy plugin add https://github.com/momoi-labs/omarchy-pane-manager.git --enable
 ```
 
 Requires `jq` and Omarchy 4 (Quattro) or newer.
@@ -72,7 +72,7 @@ hl.config({
 In `~/.config/omarchy/shell.json`:
 
 ```json
-{ "id": "me.swebber.pane-manager", "grabArea": 10, "roundedRadius": 8, "maxBorderSize": 12 }
+{ "id": "dev.momoi-labs.pane-manager", "grabArea": 10, "roundedRadius": 8, "maxBorderSize": 12 }
 ```
 
 | Key | Default | What it does |
@@ -86,7 +86,7 @@ In `~/.config/omarchy/shell.json`:
 The helper is usable on its own — handy for a keybinding:
 
 ```bash
-BIN=~/.config/omarchy/plugins/me.swebber.pane-manager/bin/pane-manager
+BIN=~/.config/omarchy/plugins/dev.momoi-labs.pane-manager/bin/pane-manager
 $BIN state                # JSON: enabled, grabArea, borderSize, rounding
 $BIN enable [grabArea]
 $BIN disable              # also reverts border chrome to your config
