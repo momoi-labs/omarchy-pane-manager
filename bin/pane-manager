@@ -76,9 +76,18 @@ disable_all() {
 # answers `failed to parse "exact" as a delta`). Ratios do clamp to [0.1, 1.9],
 # so a delta past the low bound lands on a known 0.1 and one more hop reaches
 # the 1.0 default. Verified on Hyprland 0.56.2.
+# A pane that is the only node on its workspace has no parent split to reset,
+# and Hyprland says so rather than doing nothing. That is not a failure: there
+# was simply nothing to undo.
 reset_active_split() {
-  dispatch 'hl.dsp.layout("splitratio -5")'
-  dispatch 'hl.dsp.layout("splitratio +0.9")'
+  local step out
+  for step in 'splitratio -5' 'splitratio +0.9'; do
+    out=$(hyprctl dispatch "hl.dsp.layout(\"$step\")" 2>&1)
+    case "$out" in
+      *"single node"*|*"no / single"*) return 0 ;;
+      error:*|warning:*) die "$(clean_msg "$out")" ;;
+    esac
+  done
 }
 
 reset_layout() {
