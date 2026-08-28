@@ -86,27 +86,38 @@ def window_box(c):
     return (c["at"][0], c["at"][1], c["size"][0], c["size"][1])
 
 
-def contains(box, p):
+def rect_distance_sq(point, box):
+    """Hyprland's vecToRectDistanceSquared: 0 inside the box, otherwise the
+    squared distance from the point to its nearest edge."""
     x, y, w, h = box
-    return x <= p[0] <= x + w and y <= p[1] <= y + h
+    dx = max(0.0, x - point[0], point[0] - (x + w))
+    dy = max(0.0, y - point[1], point[1] - (y + h))
+    return dx * dx + dy * dy
 
 
-def pick_target(clients, cursor, dragged_addr, workspace_id, use_active):
-    """Mirror DwindleAlgorithm's OPENINGON choice."""
-    tiled = [c for c in clients
-             if not c["floating"] and c["workspace"]["id"] == workspace_id
-             and c["address"] != dragged_addr and c["mapped"]]
-    if not tiled:
-        return None
-    if use_active:
-        # dwindle:use_active_for_splits -> the focused window, not the hovered
-        # one. focusHistoryID 0 is the focused window; the dragged one is
-        # excluded above, so the lowest remaining id is the last focused.
-        return min(tiled, key=lambda c: c.get("focusHistoryID", 1 << 30))
-    for c in tiled:
-        if contains(window_box(c), cursor):
-            return c
-    return None
+def pick_target(clients, cursor, dragged_addr, workspace_id):
+    """Mirror which pane Hyprland splits when a drag is dropped.
+
+    DwindleAlgorithm tries the focused window first when
+    dwindle:use_active_for_splits is on — but it also requires that window to be
+    something other than the one being placed (`ACTIVE_WINDOW !=
+    target->window()`), and during a drop those are the same window. So the
+    branch always falls through to getClosestNode(cursor, dragged): the leaf
+    nearest the cursor, zero distance meaning the cursor is inside it. With the
+    option off the code hit tests the cursor instead, which gives the same
+    answer whenever the cursor is over a pane, so one rule covers both.
+    """
+    best = None
+    best_distance = None
+    for c in clients:
+        if c["floating"] or not c["mapped"]:
+            continue
+        if c["workspace"]["id"] != workspace_id or c["address"] == dragged_addr:
+            continue
+        distance = rect_distance_sq(cursor, window_box(c))
+        if best_distance is None or distance < best_distance:
+            best, best_distance = c, distance
+    return best
 
 
 def main():
@@ -154,7 +165,6 @@ def main():
                         dragging = {
                             "addr": addr,
                             "ws": me["workspace"]["id"],
-                            "use_active": bool(option("dwindle:use_active_for_splits", "bool")),
                             "ratio": option("dwindle:default_split_ratio", "float") or 1.0,
                             # The indicator draws the shape the pane will have,
                             # so it takes its corners from Hyprland, not the
@@ -179,8 +189,14 @@ def main():
             time.sleep(period)
             continue
 
+        # Read the workspace off the dragged window every frame rather than
+        # caching it: dragging across monitors moves the window to the
+        # workspace it lands on, and the target has to follow.
+        me = next((c for c in clients if c["address"] == dragging["addr"]), None)
+        workspace = me["workspace"]["id"] if me else dragging["ws"]
+
         target = pick_target(clients, (cur["x"], cur["y"]), dragging["addr"],
-                             dragging["ws"], dragging["use_active"])
+                             workspace)
         if target:
             res = landing_box((cur["x"], cur["y"]), window_box(target),
                               dragging["ratio"])
