@@ -40,7 +40,10 @@ Left-clicking the bar icon opens it.
   position, and the landing spot is shaded while you drag. Gates both halves at
   once: the overlay stays quiet whenever this is off.
 - **Thickness** — border width in px (`general:border_size`)
-- **Corners** — Square or Round (`decoration:rounding`)
+- **Corners** — Square or Round (`decoration:rounding`). The shell mirrors this
+  into its own chrome but only re-reads it at startup and on a theme change, so
+  the plugin nudges `Style.scheduleRefresh()` after every change — otherwise the
+  panel telling you "Square" would still be drawn with round corners itself.
 - **Reset this workspace** / **Reset all workspaces** — restore default split
   ratios, then reload the config
 
