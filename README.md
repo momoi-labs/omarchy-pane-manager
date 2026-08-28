@@ -53,7 +53,27 @@ switch are all reliable ways back to your configured state.
 omarchy plugin add https://github.com/momoi-labs/omarchy-pane-manager.git --enable
 ```
 
-Requires `jq` and Omarchy 4 (Quattro) or newer.
+To remove it:
+
+```bash
+omarchy plugin remove dev.momoi-labs.pane-manager
+```
+
+Removal takes the bar widget and the drop indicator with it and leaves nothing
+behind: everything the plugin changes is set at runtime, so the next Hyprland
+reload already has your own `~/.config/hypr/` values back. Anything you chose to
+persist there (see below) is yours and stays until you remove it yourself.
+
+### Requirements
+
+Omarchy 4 (Quattro) or newer, plus two things an Omarchy install already has:
+
+| Dependency | Used by |
+|---|---|
+| `jq` | `bin/pane-manager`, for reading Hyprland's JSON |
+| `python3` | `bin/drop-indicator`, which talks to Hyprland's sockets directly |
+
+No other external dependencies, and nothing is fetched at runtime.
 
 ## Persisting the settings
 
