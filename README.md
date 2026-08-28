@@ -18,6 +18,8 @@ affordance is discoverable.
 
 ### See where a dragged pane will land
 
+![Drop indicator following the cursor during a drag](preview-drop.gif)
+
 `SUPER` + dragging a pane over another one tiles it above, below or beside the
 target. Hyprland picks the side from your cursor but draws nothing to say which,
 so the result is hard to predict. Pane Manager shades the half the pane is about
