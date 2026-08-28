@@ -26,7 +26,6 @@ Panel {
   property int activeGrabArea: 0
   property int borderSize: 0
   property int rounding: 0
-  property bool smartSplit: false
   property string statusMessage: ""
   property bool busy: false
 
@@ -48,8 +47,6 @@ Panel {
   function toggleDrag() { run([dragEnabled ? "disable" : "enable", String(grabArea)]) }
   function setBorderSize(px) { run(["border", String(px)]) }
   function setCorners(style) { run(["corners", style === "round" ? String(roundedRadius) : "0"]) }
-  function toggleSmartSplit() { run(["smartsplit", smartSplit ? "false" : "true"]) }
-  function flipSplit() { run(["flipsplit"], function() { root.statusMessage = "Split direction flipped" }) }
   function resetWorkspace() { run(["reset"], function() { root.statusMessage = "Current workspace reset" }) }
   function resetAll() { run(["reset", "--all"], function() { root.statusMessage = "All workspaces reset" }) }
 
@@ -92,7 +89,6 @@ Panel {
           root.activeGrabArea = Number(parsed.grabArea) || 0
           root.borderSize = Number(parsed.borderSize) || 0
           root.rounding = Number(parsed.rounding) || 0
-          root.smartSplit = parsed.smartSplit === true
         } catch (e) {
           root.statusMessage = "Could not read Hyprland state"
         }
@@ -251,39 +247,6 @@ Panel {
         }
 
         PanelSeparator { Layout.fillWidth: true; foreground: root.barForeground }
-
-        PanelSectionHeader {
-          text: "SPLIT"
-          foreground: root.barForeground
-          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-        }
-
-        Toggle {
-          Layout.fillWidth: true
-          label: "Smart split"
-          description: root.smartSplit
-            ? "A new pane opens toward the cursor — top of a pane splits above it, left splits beside it."
-            : "A new pane always opens to the right or below. Switch on to split by cursor position instead."
-          checked: root.smartSplit
-          enabled: !root.busy
-          foreground: root.barForeground
-          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          onClicked: root.toggleSmartSplit()
-        }
-
-        Button {
-          Layout.fillWidth: true
-          text: "Flip this split"
-          iconText: "󰕵"
-          leftAlign: true
-          bordered: true
-          focusable: true
-          enabled: !root.busy
-          foreground: root.barForeground
-          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          tooltipText: "Stack the focused pane against its neighbour instead of sitting beside it (SUPER + J)"
-          onClicked: root.flipSplit()
-        }
 
         PanelSeparator { Layout.fillWidth: true; foreground: root.barForeground }
 

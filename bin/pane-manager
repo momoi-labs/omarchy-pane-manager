@@ -5,8 +5,6 @@
 #   pane-manager enable [grabArea]  → drag-the-border resizing on
 #   pane-manager disable            → off, and border chrome back to config
 #   pane-manager toggle [grabArea]  → flip it
-#   pane-manager smartsplit <bool>  → new panes split toward the cursor
-#   pane-manager flipsplit          → flip the active pane's split direction
 #   pane-manager border <px>        → border thickness
 #   pane-manager corners <px>       → corner radius (0 = square)
 #   pane-manager reset [--all]      → reset split ratios, then reload config
@@ -120,8 +118,7 @@ case "$cmd" in
       --argjson grabArea "$(opt_int general:extend_border_grab_area)" \
       --argjson borderSize "$(opt_int general:border_size)" \
       --argjson rounding "$(opt_int decoration:rounding)" \
-      --argjson smartSplit "$(opt_bool dwindle:smart_split)" \
-      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding, smartSplit: $smartSplit}'
+      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding}'
     ;;
   enable)  set_resize_on_border true "${1:-}" ;;
   disable) disable_all ;;
@@ -139,17 +136,6 @@ case "$cmd" in
   corners)
     is_uint "${1:-}"
     eval_lua "hl.config({ decoration = { rounding = $1 } })"
-    ;;
-  smartsplit)
-    case "${1:-}" in
-      true|false) eval_lua "hl.config({ dwindle = { smart_split = $1 } })" ;;
-      *) die "expected true or false, got: ${1:-}" ;;
-    esac
-    ;;
-  flipsplit)
-    # Same thing SUPER + J does. Fails on a workspace with a single pane —
-    # there is no parent node to flip.
-    dispatch 'hl.dsp.layout("togglesplit")'
     ;;
   reset)
     [[ ${1:-} == --all ]] && reset_layout all || reset_layout workspace
