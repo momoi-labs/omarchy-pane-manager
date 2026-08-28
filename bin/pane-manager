@@ -5,6 +5,8 @@
 #   pane-manager enable [grabArea]  → drag-the-border resizing on
 #   pane-manager disable            → off, and border chrome back to config
 #   pane-manager toggle [grabArea]  → flip it
+#   pane-manager smartsplit <bool>  → new panes split toward the cursor
+#   pane-manager flipsplit          → flip the active pane's split direction
 #   pane-manager border <px>        → border thickness
 #   pane-manager corners <px>       → corner radius (0 = square)
 #   pane-manager reset [--all]      → reset split ratios, then reload config
@@ -34,11 +36,22 @@ eval_lua() {
   return 0
 }
 
+# hyprctl reports a refused dispatch two ways: "error:" for a malformed call and
+# "warning:" for one the layout would not honour (togglesplit on a lone pane,
+# say). Both mean nothing happened, so both are failures here.
 dispatch() {
   local out
   out=$(hyprctl dispatch "$1" 2>&1)
-  [[ $out == error:* ]] && die "${out#error: }"
-  return 0
+  case "$out" in
+    error:*|warning:*) ;;
+    *) return 0 ;;
+  esac
+  out=${out#error: }; out=${out#warning: }
+  out=${out#=\[C\]:-1: }              # strip the Lua source location
+  case "$out" in
+    "can't togglesplit"*) die "needs two or more panes on this workspace" ;;
+    *) die "$out" ;;
+  esac
 }
 
 set_resize_on_border() { # $1 = true|false, $2 = grab area (optional)
@@ -107,7 +120,8 @@ case "$cmd" in
       --argjson grabArea "$(opt_int general:extend_border_grab_area)" \
       --argjson borderSize "$(opt_int general:border_size)" \
       --argjson rounding "$(opt_int decoration:rounding)" \
-      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding}'
+      --argjson smartSplit "$(opt_bool dwindle:smart_split)" \
+      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding, smartSplit: $smartSplit}'
     ;;
   enable)  set_resize_on_border true "${1:-}" ;;
   disable) disable_all ;;
@@ -125,6 +139,17 @@ case "$cmd" in
   corners)
     is_uint "${1:-}"
     eval_lua "hl.config({ decoration = { rounding = $1 } })"
+    ;;
+  smartsplit)
+    case "${1:-}" in
+      true|false) eval_lua "hl.config({ dwindle = { smart_split = $1 } })" ;;
+      *) die "expected true or false, got: ${1:-}" ;;
+    esac
+    ;;
+  flipsplit)
+    # Same thing SUPER + J does. Fails on a workspace with a single pane —
+    # there is no parent node to flip.
+    dispatch 'hl.dsp.layout("togglesplit")'
     ;;
   reset)
     [[ ${1:-} == --all ]] && reset_layout all || reset_layout workspace

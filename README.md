@@ -1,8 +1,9 @@
 # Pane Manager
 
 An [Omarchy](https://omarchy.org/) shell plugin for managing tiled panes from
-the bar: resize them by dragging the divider with your mouse, set the border
-thickness and corner style, and put a mangled layout back the way it was.
+the bar: resize them by dragging the divider with your mouse, split up and down
+instead of only sideways, set the border thickness and corner style, and put a
+mangled layout back the way it was.
 
 ![Pane Manager panel](preview.png)
 
@@ -31,6 +32,12 @@ Left-clicking the bar icon opens it.
   corner radius and grab area all revert to whatever `~/.config/hypr/` says.
 - **Thickness** — border width in px (`general:border_size`)
 - **Corners** — Square or Round (`decoration:rounding`)
+- **Smart split** — `dwindle:smart_split`. Off, every new pane opens to the
+  right or below. On, it opens toward your cursor: land in the top of a pane and
+  the new one splits above it, the left and it splits beside it.
+- **Flip this split** — flips the focused pane between sitting beside its
+  neighbour and stacking with it (`layoutmsg togglesplit`, same as `SUPER + J`).
+  Needs a second pane on the workspace.
 - **Reset this workspace** / **Reset all workspaces** — restore default split
   ratios, then reload the config
 
@@ -89,8 +96,23 @@ $BIN disable              # also reverts border chrome to your config
 $BIN toggle [grabArea]
 $BIN border <px>
 $BIN corners <px>         # 0 = square
+$BIN smartsplit <bool>
+$BIN flipsplit
 $BIN reset [--all]
 ```
+
+## What this plugin does not do
+
+Moving panes with the mouse is already Hyprland's, and there is no
+modifier-free version of it to add: a tiled pane has no titlebar to grab, so the
+modifier is what tells the compositor you mean the window rather than its
+contents. Omarchy binds it out of the box:
+
+| Binding | Action |
+|---|---|
+| `SUPER` + drag left button | Move / swap the pane under the cursor |
+| `SUPER` + `SHIFT` + arrows | Swap the focused pane in a direction |
+| `SUPER` + `J` | Flip the split direction (the panel's button) |
 
 ## Notes for hackers
 
