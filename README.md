@@ -49,9 +49,11 @@ omarchy plugin add https://github.com/momoi-labs/omarchy-pane-manager.git --enab
 
 Requires `jq` and Omarchy 4 (Quattro) or newer.
 
-## Persisting the setting
+## Persisting the settings
 
-To have drag-the-border on at every login, put it in
+Both switches change Hyprland at runtime only — that is what makes the resets
+and the off positions reliable ways back. To have them on at every login, and to
+give the resets the state you actually want to land on, put it in
 `~/.config/hypr/looknfeel.lua`:
 
 ```lua
@@ -63,6 +65,19 @@ hl.config({
     extend_border_grab_area = 10,
     -- Cursor changes shape over the handle, so the affordance is discoverable.
     hover_icon_on_border = true,
+    -- Omarchy ships 2.
+    border_size = 1,
+  },
+
+  decoration = {
+    -- Omarchy ships 0, i.e. square.
+    rounding = 8,
+  },
+
+  dwindle = {
+    -- A dropped pane picks its side from the cursor, so it can land above and
+    -- below as well as beside. The drop indicator stays dark while this is off.
+    precise_mouse_move = true,
   },
 })
 ```
