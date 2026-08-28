@@ -29,6 +29,10 @@ Left-clicking the bar icon opens it.
 - **Drag the border** — `general:resize_on_border` on and off.
   Turning it **off hands everything back to the system**: the border thickness,
   corner radius and grab area all revert to whatever `~/.config/hypr/` says.
+- **Drop to any side** — `dwindle:precise_mouse_move`. Off, a dropped pane only
+  ever tiles left or right. On, it tiles above and below too, by cursor
+  position, and the landing spot is shaded while you drag. Gates both halves at
+  once: the overlay stays quiet whenever this is off.
 - **Thickness** — border width in px (`general:border_size`)
 - **Corners** — Square or Round (`decoration:rounding`)
 - **Reset this workspace** / **Reset all workspaces** — restore default split
@@ -89,6 +93,7 @@ $BIN disable              # also reverts border chrome to your config
 $BIN toggle [grabArea]
 $BIN border <px>
 $BIN corners <px>         # 0 = square
+$BIN dropside <bool>
 $BIN reset [--all]
 ```
 

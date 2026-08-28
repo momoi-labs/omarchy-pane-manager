@@ -26,6 +26,7 @@ Panel {
   property int activeGrabArea: 0
   property int borderSize: 0
   property int rounding: 0
+  property bool dropAnySide: false
   property string statusMessage: ""
   property bool busy: false
 
@@ -46,6 +47,7 @@ Panel {
   // ~/.config/hypr/ as well, so the switch is a clean "plugin, hands off".
   function toggleDrag() { run([dragEnabled ? "disable" : "enable", String(grabArea)]) }
   function setBorderSize(px) { run(["border", String(px)]) }
+  function toggleDropAnySide() { run(["dropside", dropAnySide ? "false" : "true"]) }
   function setCorners(style) { run(["corners", style === "round" ? String(roundedRadius) : "0"]) }
   function resetWorkspace() { run(["reset"], function() { root.statusMessage = "Current workspace reset" }) }
   function resetAll() { run(["reset", "--all"], function() { root.statusMessage = "All workspaces reset" }) }
@@ -89,6 +91,7 @@ Panel {
           root.activeGrabArea = Number(parsed.grabArea) || 0
           root.borderSize = Number(parsed.borderSize) || 0
           root.rounding = Number(parsed.rounding) || 0
+          root.dropAnySide = parsed.dropAnySide === true
         } catch (e) {
           root.statusMessage = "Could not read Hyprland state"
         }
@@ -194,6 +197,19 @@ Panel {
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
           onClicked: root.toggleDrag()
+        }
+
+        Toggle {
+          Layout.fillWidth: true
+          label: "Drop to any side"
+          description: root.dropAnySide
+            ? "Dropping a dragged pane on another tiles it above, below or beside, by cursor position. The half it will take is shaded while you drag."
+            : "A dropped pane only ever tiles left or right. Switch on for above and below too, with the landing spot shaded while you drag."
+          checked: root.dropAnySide
+          enabled: !root.busy
+          foreground: root.barForeground
+          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+          onClicked: root.toggleDropAnySide()
         }
 
         PanelSeparator { Layout.fillWidth: true; foreground: root.barForeground }

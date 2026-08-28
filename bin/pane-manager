@@ -5,6 +5,7 @@
 #   pane-manager enable [grabArea]  → drag-the-border resizing on
 #   pane-manager disable            → off, and border chrome back to config
 #   pane-manager toggle [grabArea]  → flip it
+#   pane-manager dropside <bool>    → drop a dragged pane on any side
 #   pane-manager border <px>        → border thickness
 #   pane-manager corners <px>       → corner radius (0 = square)
 #   pane-manager reset [--all]      → reset split ratios, then reload config
@@ -118,7 +119,8 @@ case "$cmd" in
       --argjson grabArea "$(opt_int general:extend_border_grab_area)" \
       --argjson borderSize "$(opt_int general:border_size)" \
       --argjson rounding "$(opt_int decoration:rounding)" \
-      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding}'
+      --argjson dropAnySide "$(opt_bool dwindle:precise_mouse_move)" \
+      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding, dropAnySide: $dropAnySide}'
     ;;
   enable)  set_resize_on_border true "${1:-}" ;;
   disable) disable_all ;;
@@ -136,6 +138,14 @@ case "$cmd" in
   corners)
     is_uint "${1:-}"
     eval_lua "hl.config({ decoration = { rounding = $1 } })"
+    ;;
+  dropside)
+    # Gates both halves of the feature at once: Hyprland's four-way drop, and
+    # the overlay, which stays quiet whenever this is off.
+    case "${1:-}" in
+      true|false) eval_lua "hl.config({ dwindle = { precise_mouse_move = $1 } })" ;;
+      *) die "expected true or false, got: ${1:-}" ;;
+    esac
     ;;
   reset)
     [[ ${1:-} == --all ]] && reset_layout all || reset_layout workspace
