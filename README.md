@@ -1,8 +1,9 @@
 # Pane Manager
 
 An [Omarchy](https://omarchy.org/) shell plugin for managing tiled panes from
-the bar: resize them by dragging the divider with your mouse, set the border
-thickness and corner style, and put a mangled layout back the way it was.
+the bar. Resize them by dragging the divider with your mouse, see where a
+dragged pane will land before you drop it, set the border thickness and corner
+style, and put a mangled layout back the way it was.
 
 ![Pane Manager panel](preview.png)
 
@@ -21,6 +22,11 @@ divider between two tiled panes directly, the way panes work in an IDE. This
 plugin turns that on from the bar, puts the border chrome that goes with it in
 the same place, and — because a resized dwindle tree has no built-in undo —
 gives you a way to reset the split ratios.
+
+Dropping a dragged pane has the same gap. Hyprland can tile it above, below or
+beside the target depending on where your cursor is, but it draws nothing to say
+which, so the result feels like a coin toss. This plugin shades the half the
+pane is about to take, live, while you drag — see [Drop indicator](#drop-indicator).
 
 ## The panel
 
