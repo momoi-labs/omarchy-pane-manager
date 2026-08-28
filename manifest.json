@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "me.swebber.pane-manager",
+  "name": "Pane Manager",
+  "version": "1.0.0",
+  "author": "Sebastian Webber",
+  "license": "MIT",
+  "description": "Manage tiled panes from the bar: resize them by dragging the divider with your mouse, set the border thickness and corner style, and put a mangled layout back the way it was.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "PaneManager.qml"
+  },
+  "barWidget": {
+    "displayName": "Pane Manager",
+    "description": "Drag-the-border pane resizing, border thickness and corner style, and one-click layout reset for the current workspace or all of them. Left click opens the panel.",
+    "category": "System",
+    "defaultSection": "right",
+    "aliases": ["panes", "tiles", "resize", "borders", "layout"],
+    "allowMultiple": false,
+    "defaults": {
+      "grabArea": 10,
+      "roundedRadius": 8,
+      "maxBorderSize": 12
+    },
+    "schema": [
+      {
+        "key": "grabArea",
+        "type": "number",
+        "label": "Grab area",
+        "defaultValue": 10,
+        "description": "Pixels beyond the drawn border that still count as the resize handle (Hyprland's general:extend_border_grab_area). Larger is easier to grab; too large starts stealing clicks near a pane's edges."
+      },
+      {
+        "key": "roundedRadius",
+        "type": "number",
+        "label": "Round corner radius",
+        "defaultValue": 8,
+        "description": "Corner radius in px applied when Corners is set to Round (Hyprland's decoration:rounding)."
+      },
+      {
+        "key": "maxBorderSize",
+        "type": "number",
+        "label": "Max border thickness",
+        "defaultValue": 12,
+        "description": "Upper bound of the border thickness field."
+      }
+    ]
+  }
+}

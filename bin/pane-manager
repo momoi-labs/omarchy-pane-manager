@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# Helper for the Pane Manager Omarchy plugin.
+#
+#   pane-manager state              → JSON with the current Hyprland state
+#   pane-manager enable [grabArea]  → drag-the-border resizing on
+#   pane-manager disable            → off, and border chrome back to config
+#   pane-manager toggle [grabArea]  → flip it
+#   pane-manager border <px>        → border thickness
+#   pane-manager corners <px>       → corner radius (0 = square)
+#   pane-manager reset [--all]      → reset split ratios, then reload config
+#
+# Two things about hyprctl on Omarchy 4 (Hyprland's Lua config parser):
+#
+#   - `hyprctl keyword` is gone: it answers "keyword can't work with non-legacy
+#     parsers. Use eval." Runtime changes go through `hyprctl eval`, and layout
+#     dispatchers take one string argument rather than separate ones.
+#   - hyprctl exits 0 even when a dispatcher errors, printing "error: …" on
+#     stdout, so every dispatch here is checked by hand.
+set -euo pipefail
+
+die() { printf '{"error":%s}\n' "$(jq -Rn --arg m "$1" '$m')" >&2; exit 1; }
+command -v jq >/dev/null || die "jq is required"
+command -v hyprctl >/dev/null || die "hyprctl is required"
+
+opt_bool() { hyprctl getoption "$1" -j | jq -r '.bool'; }
+opt_int()  { hyprctl getoption "$1" -j | jq -r '.int'; }
+
+is_uint() { [[ $1 =~ ^[0-9]+$ ]] || die "expected a whole number, got: $1"; }
+
+eval_lua() {
+  local out
+  out=$(hyprctl eval "$1" 2>&1)
+  [[ $out == error:* ]] && die "${out#error: }"
+  return 0
+}
+
+dispatch() {
+  local out
+  out=$(hyprctl dispatch "$1" 2>&1)
+  [[ $out == error:* ]] && die "${out#error: }"
+  return 0
+}
+
+set_resize_on_border() { # $1 = true|false, $2 = grab area (optional)
+  if [[ -n ${2:-} ]]; then
+    is_uint "$2"
+    eval_lua "hl.config({ general = { resize_on_border = $1, extend_border_grab_area = $2 } })"
+  else
+    eval_lua "hl.config({ general = { resize_on_border = $1 } })"
+  fi
+}
+
+# Disabling hands everything back to the system rather than only clearing one
+# flag: reload restores border thickness, corner radius and grab area from
+# ~/.config/hypr/, then resize_on_border is forced off on top — the config may
+# well ask for it to be on.
+disable_all() {
+  hyprctl reload >/dev/null
+  eval_lua "hl.config({ general = { resize_on_border = false } })"
+}
+
+# dwindle's splitratio takes a delta, not an absolute value — Hyprland has no
+# "set this node back to 1.0" message, and `exact` is not a thing here (it
+# answers `failed to parse "exact" as a delta`). Ratios do clamp to [0.1, 1.9],
+# so a delta past the low bound lands on a known 0.1 and one more hop reaches
+# the 1.0 default. Verified on Hyprland 0.56.2.
+reset_active_split() {
+  dispatch 'hl.dsp.layout("splitratio -5")'
+  dispatch 'hl.dsp.layout("splitratio +0.9")'
+}
+
+reset_layout() {
+  local scope=$1 focused select ws addrs=() addr
+  focused=$(hyprctl activewindow -j | jq -r '.address // empty')
+
+  if [[ $scope == all ]]; then
+    select='.[]'
+  else
+    ws=$(hyprctl activeworkspace -j | jq -r '.id')
+    select=".[] | select(.workspace.id == $ws)"
+  fi
+
+  # splitratio only means anything for tiled windows; floating ones keep
+  # whatever size the user gave them.
+  mapfile -t addrs < <(hyprctl clients -j | jq -r "$select | select(.floating | not) | .address")
+
+  for addr in "${addrs[@]}"; do
+    dispatch "hl.dsp.focus({ window = \"address:$addr\" })"
+    reset_active_split
+  done
+
+  [[ -n $focused ]] && dispatch "hl.dsp.focus({ window = \"address:$focused\" })"
+
+  # Reload restores border size, corner radius, resize_on_border and the grab
+  # area from ~/.config/hypr/, discarding anything set at runtime.
+  hyprctl reload >/dev/null
+  return 0
+}
+
+cmd=${1:-state}
+[[ $# -gt 0 ]] && shift
+
+case "$cmd" in
+  state)
+    jq -cn \
+      --argjson enabled "$(opt_bool general:resize_on_border)" \
+      --argjson grabArea "$(opt_int general:extend_border_grab_area)" \
+      --argjson borderSize "$(opt_int general:border_size)" \
+      --argjson rounding "$(opt_int decoration:rounding)" \
+      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding}'
+    ;;
+  enable)  set_resize_on_border true "${1:-}" ;;
+  disable) disable_all ;;
+  toggle)
+    if [[ $(opt_bool general:resize_on_border) == true ]]; then
+      disable_all
+    else
+      set_resize_on_border true "${1:-}"
+    fi
+    ;;
+  border)
+    is_uint "${1:-}"
+    eval_lua "hl.config({ general = { border_size = $1 } })"
+    ;;
+  corners)
+    is_uint "${1:-}"
+    eval_lua "hl.config({ decoration = { rounding = $1 } })"
+    ;;
+  reset)
+    [[ ${1:-} == --all ]] && reset_layout all || reset_layout workspace
+    ;;
+  *) die "unknown command: $cmd" ;;
+esac
