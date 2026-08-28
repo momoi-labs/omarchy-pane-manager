@@ -7,6 +7,33 @@ style, and put a mangled layout back the way it was.
 
 ![Pane Manager panel](preview.png)
 
+## Features
+
+### Drag the divider to resize
+
+Turns on `general:resize_on_border`, so the boundary between two panes is a
+handle you can grab with the mouse — no modifier held, the way panes work in an
+IDE. The grab area is configurable, and the cursor changes shape over it so the
+affordance is discoverable.
+
+### See where a dragged pane will land
+
+`SUPER` + dragging a pane over another one tiles it above, below or beside the
+target. Hyprland picks the side from your cursor but draws nothing to say which,
+so the result is hard to predict. Pane Manager shades the half the pane is about
+to take, live, while you drag.
+
+### Border thickness and corners
+
+Width in px and Square/Round corners, applied as you change them.
+
+### Undo a mangled layout
+
+Resizing a dwindle tree has no built-in undo. Two buttons restore the default
+split ratios, for the current workspace or all of them, and reload your Hyprland
+config on the way out — so they double as a way back from anything the panel
+changed.
+
 ## Why
 
 Hyprland already ships modifier-driven mouse resize, and Omarchy binds it out of
