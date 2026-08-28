@@ -183,8 +183,12 @@ Panel {
 
         Toggle {
           Layout.fillWidth: true
+          // The switch carries the state; the description carries what switching
+          // off does, which is more than clearing a flag.
           label: "Drag the border"
-          description: "Resize panes by grabbing the divider, no modifier held."
+          description: root.dragEnabled
+            ? "Grab the divider to resize, no modifier held. Switching off restores your Hyprland defaults."
+            : "Only SUPER + right drag resizes. Switching on uses a " + root.grabArea + "px handle; switching off restores your Hyprland defaults."
           checked: root.dragEnabled
           enabled: !root.busy
           foreground: root.barForeground
