@@ -11,6 +11,8 @@ style, and put a mangled layout back the way it was.
 
 ### Drag the divider to resize
 
+![Resizing two panes by dragging the divider, no modifier held](preview-resize.gif)
+
 Turns on `general:resize_on_border`, so the boundary between two panes is a
 handle you can grab with the mouse — no modifier held, the way panes work in an
 IDE. The grab area is configurable, and the cursor changes shape over it so the
