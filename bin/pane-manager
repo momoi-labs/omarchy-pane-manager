@@ -35,6 +35,14 @@ eval_lua() {
   return 0
 }
 
+# Strip the refusal prefix and the Lua source location, leaving only what is
+# worth showing the user.
+clean_msg() {
+  local out=$1
+  out=${out#error: }; out=${out#warning: }
+  printf '%s' "${out#=\[C\]:-1: }"
+}
+
 # hyprctl reports a refused dispatch two ways: "error:" for a malformed call and
 # "warning:" for one the layout would not honour (togglesplit on a lone pane,
 # say). Both mean nothing happened, so both are failures here.
@@ -45,8 +53,7 @@ dispatch() {
     error:*|warning:*) ;;
     *) return 0 ;;
   esac
-  out=${out#error: }; out=${out#warning: }
-  out=${out#=\[C\]:-1: }              # strip the Lua source location
+  out=$(clean_msg "$out")
   case "$out" in
     "can't togglesplit"*) die "needs two or more panes on this workspace" ;;
     *) die "$out" ;;
