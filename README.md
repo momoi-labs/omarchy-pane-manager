@@ -27,16 +27,69 @@ target. Hyprland picks the side from your cursor but draws nothing to say which,
 so the result is hard to predict. Pane Manager shades the half the pane is about
 to take, live, while you drag.
 
+### Switch to the scrolling layout
+
+Hyprland ships a niri-like `scrolling` layout: new panes join a row that scrolls
+sideways instead of splitting the pane they land in. The switch applies it to
+every workspace; `bin/pane-manager layout scrolling --workspace` does just the
+active one, for a keybinding.
+
+Splitting is dwindle's, so on a scrolling workspace the panel turns off what
+depends on it — the drop indicator and **Drop to any side**. **Drag the border**
+is layout-agnostic and keeps working, and the two resets stay available: they
+are the way back.
+
+Hyprland tracks the layout per workspace, so the switch writes the same
+per-workspace rules as Omarchy's own
+`omarchy-hyprland-workspace-layout-toggle`, in
+`~/.local/state/omarchy/workspace-layouts/<id>.lua`. The two agree, and the
+choice survives a reload.
+
+### Per workspace, or everywhere
+
+The three behaviour switches — **Scrolling layout**, **Drag the border** and
+**Drop to any side** — are answered per workspace on top of a global value, and
+**Apply to** at the top of the panel says which of the two you are editing:
+
+- `all` writes the global value: what every workspace falls back to. Setting it
+  drops the workspaces' own answers, so what the panel shows is what you get
+  everywhere.
+- `ws <id>` writes an override for that workspace alone. The chips list the
+  workspaces you have open, and a `·` marks the one you are on — you can set up
+  ws 3 from ws 1.
+
+That is what the third state on each switch is for. **Default** is not a value
+but the absence of one: at workspace scope it hands the answer back to the
+global setting — the badge says which, `DEFAULT · ON` — and at global scope it
+hands it back to `~/.config/hypr/`. The scope always opens on the workspace you
+are in, because a sticky `all` is how you change every workspace believing you
+are changing one.
+
+Only the layout is per workspace in Hyprland itself. `resize_on_border` and
+`dwindle:precise_mouse_move` are single global options, so a per-workspace value
+means "write this when the workspace takes focus" — the plugin does exactly
+that, on every workspace change, without reloading anything. The border
+thickness, corner radius and grab area are not scoped at all: they are chrome
+rather than behaviour, and Hyprland has no per-workspace notion of them either.
+
+The choices live in `~/.local/state/omarchy/pane-manager/`, as `global.json` and
+`overrides.json`, next to a `config.json` snapshot of what `~/.config/hypr/`
+asked for — `hyprctl getoption` answers with the value in force rather than the
+configured one, and these are the options the plugin overwrites, so read live it
+would drift into "whatever was applied last" and Default would stop meaning
+anything. The snapshot is taken while the values are untouched, and again after
+every reload. **Reset all workspaces** deletes the lot.
+
 ### Border thickness and corners
 
 Width in px and Square/Round corners, applied as you change them.
 
 ### Undo a mangled layout
 
-Resizing a dwindle tree has no built-in undo. Two buttons restore the default
-split ratios, for the current workspace or all of them, and reload your Hyprland
-config on the way out — so they double as a way back from anything the panel
-changed.
+Resizing a dwindle tree has no built-in undo. Two buttons put things back, for
+the current workspace or all of them: they drop any scrolling override, reload
+your Hyprland config, and restore the default split ratios — so they double as a
+way back from anything the panel changed.
 
 ## Why
 
@@ -63,9 +116,15 @@ pane is about to take, live, while you drag — see [Drop indicator](#drop-indic
 
 Left-clicking the bar icon opens it.
 
-- **Drag the border** — `general:resize_on_border` on and off.
-  Turning it **off hands everything back to the system**: the border thickness,
-  corner radius and grab area all revert to whatever `~/.config/hypr/` says.
+- **Apply to** — `ws <id>` or `all`: where the three switches below write. See
+  [Per workspace, or everywhere](#per-workspace-or-everywhere).
+- **Scrolling layout** — `dwindle` (Off) or `scrolling` (On), written as
+  workspace rules. On, what reads a split tree goes quiet: the drop indicator
+  stops drawing and **Drop to any side** greys out and reads off, though the
+  Hyprland option under it is untouched and comes back with dwindle.
+- **Drag the border** — `general:resize_on_border` on and off, with the grab
+  area from the settings. Off here means off, not "hand everything back": the
+  two resets are what returns the border chrome to `~/.config/hypr/`.
 - **Drop to any side** — `dwindle:precise_mouse_move`. Off, a dropped pane only
   ever tiles left or right. On, it tiles above and below too, by cursor
   position, and the landing spot is shaded while you drag. Gates both halves at
@@ -75,11 +134,13 @@ Left-clicking the bar icon opens it.
   into its own chrome but only re-reads it at startup and on a theme change, so
   the plugin nudges `Style.scheduleRefresh()` after every change — otherwise the
   panel telling you "Square" would still be drawn with round corners itself.
-- **Reset this workspace** / **Reset all workspaces** — restore default split
-  ratios, then reload the config
+- **Reset this workspace** / **Reset all workspaces** — drop the overrides,
+  reload the config, then restore the default split ratios. `--all` drops the
+  global values too, so it is the way back to `~/.config/hypr/` in full. They
+  stay enabled on a scrolling workspace, because they are the way off it.
 
-Everything the panel changes is runtime-only, so the two resets and the off
-switch are all reliable ways back to your configured state.
+The border chrome is runtime-only, and the resets clear the rest, so they remain
+the reliable way back to your configured state.
 
 ## Install
 
@@ -111,10 +172,13 @@ No other external dependencies, and nothing is fetched at runtime.
 
 ## Persisting the settings
 
-Both switches change Hyprland at runtime only — that is what makes the resets
-and the off positions reliable ways back. To have them on at every login, and to
-give the resets the state you actually want to land on, put it in
-`~/.config/hypr/looknfeel.lua`:
+The three behaviour switches are persisted in the plugin's own store, and the
+layout also as workspace rules where Omarchy keeps them. The border thickness,
+corner radius and grab area are runtime-only.
+
+Your config is still what everything falls back to — it is what **Default** at
+global scope, and both resets, land on. So it is worth putting the state you
+want as a starting point in `~/.config/hypr/looknfeel.lua`:
 
 ```lua
 hl.config({
@@ -162,14 +226,34 @@ The helper is usable on its own — handy for a keybinding:
 
 ```bash
 BIN=~/.config/omarchy/plugins/dev.momoi-labs.pane-manager/bin/pane-manager
-$BIN state                # JSON: enabled, grabArea, borderSize, rounding
-$BIN enable [grabArea]
-$BIN disable              # also reverts border chrome to your config
+$BIN state                # JSON: what Hyprland reports now, plus the store
+$BIN set <key> <value> [--workspace [id] | --all] [--grab <px>]
+$BIN apply [--grab <px>]  # write what the active workspace asks for
+$BIN border <px>          # global
+$BIN corners <px>         # global; 0 = square
+$BIN reset [--all]        # overrides, config, then split ratios
+```
+
+`set` takes `layout` (`dwindle`, `scrolling`, `default`), `drag` and `dropside`
+(`on`, `off`, `default`), and defaults to `--all`. So a keybinding that flips
+just the workspace you are on is:
+
+```bash
+$BIN set layout scrolling --workspace
+```
+
+`apply` is what the panel runs on every workspace change, to write the global
+options that workspace asked for. You only need it by hand if you drive the
+store from somewhere else.
+
+These still work, for keybindings written against 1.0:
+
+```bash
+$BIN enable [grabArea]    # = set drag on --all
+$BIN disable              # = clears drag, and reverts border chrome to config
 $BIN toggle [grabArea]
-$BIN border <px>
-$BIN corners <px>         # 0 = square
-$BIN dropside <bool>
-$BIN reset [--all]
+$BIN dropside <bool>      # = set dropside on|off --all
+$BIN layout <dwindle|scrolling> [--workspace | --all]
 ```
 
 ## Drop indicator
