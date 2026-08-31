@@ -6,7 +6,7 @@
 #   pane-manager disable            → off, and border chrome back to config
 #   pane-manager toggle [grabArea]  → flip it
 #   pane-manager dropside <bool>    → drop a dragged pane on any side
-#   pane-manager layout <name>      → dwindle or scrolling
+#   pane-manager layout <name>      → dwindle or scrolling, this workspace
 #   pane-manager border <px>        → border thickness
 #   pane-manager corners <px>       → corner radius (0 = square)
 #   pane-manager reset [--all]      → reset split ratios, then reload config
@@ -26,7 +26,12 @@ command -v hyprctl >/dev/null || die "hyprctl is required"
 
 opt_bool() { hyprctl getoption "$1" -j | jq -r '.bool'; }
 opt_int()  { hyprctl getoption "$1" -j | jq -r '.int'; }
-opt_str()  { hyprctl getoption "$1" -j | jq -r '.str'; }
+
+# The layout is per workspace, not global: `general:layout` is only the default
+# a workspace falls back to, and Omarchy's own toggle pins individual ones with
+# a workspace rule. `tiledLayout` is the one actually in force.
+active_workspace() { hyprctl activeworkspace -j | jq -r '.id'; }
+active_layout()    { hyprctl activeworkspace -j | jq -r '.tiledLayout'; }
 
 is_uint() { [[ $1 =~ ^[0-9]+$ ]] || die "expected a whole number, got: $1"; }
 
@@ -103,8 +108,23 @@ reset_active_split() {
 # of panes rather than a tree of splits, so there is no ratio to restore.
 require_dwindle() {
   local layout
-  layout=$(opt_str general:layout)
+  layout=$(active_layout)
   [[ $layout == dwindle ]] || die "not available on the $layout layout"
+}
+
+# Omarchy stores workspace layouts as one Lua file per workspace, replayed from
+# ~/.config/hypr/ on every reload (default/hypr/workspace-layouts.lua). Writing
+# the same file rather than inventing a second store means this switch and
+# `omarchy-hyprland-workspace-layout-toggle` stay in agreement, and the choice
+# survives the reload that `disable` and `reset` both run.
+set_workspace_layout() {
+  local layout=$1 ws dir
+  ws=$(active_workspace)
+  [[ $ws =~ ^-?[0-9]+$ ]] || die "no active workspace"
+  dir="$HOME/.local/state/omarchy/workspace-layouts"
+  mkdir -p "$dir"
+  printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ws" "$layout" >"$dir/$ws.lua"
+  eval_lua "hl.workspace_rule({ workspace = \"$ws\", layout = \"$layout\" })"
 }
 
 reset_layout() {
@@ -147,7 +167,7 @@ case "$cmd" in
       --argjson borderSize "$(opt_int general:border_size)" \
       --argjson rounding "$(opt_int decoration:rounding)" \
       --argjson dropAnySide "$(opt_bool dwindle:precise_mouse_move)" \
-      --arg layout "$(opt_str general:layout)" \
+      --arg layout "$(active_layout)" \
       '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding, dropAnySide: $dropAnySide, layout: $layout}'
     ;;
   enable)  set_resize_on_border true "${1:-}" ;;
@@ -176,10 +196,10 @@ case "$cmd" in
     esac
     ;;
   layout)
-    # Runtime-only, like every other switch here: `hyprctl reload` — which
-    # `disable` and `reset` both run — puts ~/.config/hypr/ back in charge.
+    # The one setting here that is not runtime-only: it is stored per workspace
+    # where Omarchy keeps it, so a reload replays it rather than undoing it.
     case "${1:-}" in
-      dwindle|scrolling) eval_lua "hl.config({ general = { layout = \"$1\" } })" ;;
+      dwindle|scrolling) set_workspace_layout "$1" ;;
       *) die "expected dwindle or scrolling, got: ${1:-}" ;;
     esac
     ;;

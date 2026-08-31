@@ -30,12 +30,17 @@ to take, live, while you drag.
 ### Switch to the scrolling layout
 
 Hyprland ships a niri-like `scrolling` layout: new panes join a row that scrolls
-sideways instead of splitting the pane they land in. Reaching it otherwise means
-editing `~/.config/hypr/looknfeel.lua`; the panel makes it a switch.
+sideways instead of splitting the pane they land in. It is set per workspace, so
+one workspace can scroll while the rest keep splitting.
 
-Splitting is dwindle's, so while scrolling is on the panel turns off what
+Splitting is dwindle's, so on a scrolling workspace the panel turns off what
 depends on it — the drop indicator, **Drop to any side**, and the two resets.
 **Drag the border** is layout-agnostic and keeps working.
+
+The switch writes the same per-workspace rule as Omarchy's own
+`omarchy-hyprland-workspace-layout-toggle`, in
+`~/.local/state/omarchy/workspace-layouts/<id>.lua`, so the two agree and the
+choice survives a reload.
 
 ### Border thickness and corners
 
@@ -73,10 +78,11 @@ pane is about to take, live, while you drag — see [Drop indicator](#drop-indic
 
 Left-clicking the bar icon opens it.
 
-- **Scrolling layout** — `general:layout`, `dwindle` or `scrolling`. On,
-  everything that reads a split tree is disabled: the drop indicator stays
-  quiet, **Drop to any side** greys out, and the resets refuse with
-  `not available on the scrolling layout`.
+- **Scrolling layout** — the active workspace's layout, `dwindle` or
+  `scrolling`, as a workspace rule. On, everything that reads a split tree is
+  disabled: the drop indicator stays quiet, **Drop to any side** greys out, and
+  the resets refuse with `not available on the scrolling layout`. Unlike the
+  rest of the panel this one is persisted, next to Omarchy's own copy of it.
 - **Drag the border** — `general:resize_on_border` on and off.
   Turning it **off hands everything back to the system**: the border thickness,
   corner radius and grab area all revert to whatever `~/.config/hypr/` says.
@@ -92,10 +98,8 @@ Left-clicking the bar icon opens it.
 - **Reset this workspace** / **Reset all workspaces** — restore default split
   ratios, then reload the config
 
-Everything the panel changes is runtime-only, so the two resets and the off
-switch are all reliable ways back to your configured state. That cuts both ways
-for the layout: both of them reload the config, which puts `general:layout` back
-to whatever `~/.config/hypr/` says.
+Everything else the panel changes is runtime-only, so the two resets and the off
+switch are all reliable ways back to your configured state.
 
 ## Install
 
@@ -135,9 +139,6 @@ give the resets the state you actually want to land on, put it in
 ```lua
 hl.config({
   general = {
-    -- "dwindle" splits the pane a new one lands in; "scrolling" adds it to a
-    -- row that scrolls sideways, niri style.
-    layout = "dwindle",
     resize_on_border = true,
     -- Pixels beyond the drawn border that still count as the handle. Larger is
     -- easier to grab; too large starts stealing clicks near a pane's edges.
@@ -188,7 +189,7 @@ $BIN toggle [grabArea]
 $BIN border <px>
 $BIN corners <px>         # 0 = square
 $BIN dropside <bool>
-$BIN layout <dwindle|scrolling>
+$BIN layout <dwindle|scrolling>   # the active workspace, persisted
 $BIN reset [--all]        # dwindle only
 ```
 

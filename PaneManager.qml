@@ -27,6 +27,8 @@ Panel {
   property int borderSize: 0
   property int rounding: 0
   property bool dropAnySide: false
+  // The layout of the active workspace, not the global default: a workspace
+  // rule can pin one workspace to scrolling while the rest stay on dwindle.
   property string layout: "dwindle"
   // Splitting, the drop indicator and the ratio resets are all dwindle's; the
   // scrolling layout answers none of them, so the panel stops offering them.
@@ -208,8 +210,8 @@ Panel {
           Layout.fillWidth: true
           label: "Scrolling layout"
           description: root.scrolling
-            ? "New panes join a row that scrolls sideways, niri style. Splitting is dwindle's, so the controls it drives are off below."
-            : "New panes split the pane they land in. Switch on for a niri-like row that scrolls sideways instead."
+            ? "This workspace puts new panes in a row that scrolls sideways, niri style. Splitting is dwindle's, so the controls it drives are off below."
+            : "This workspace splits the pane a new one lands in. Switch on for a niri-like row that scrolls sideways instead. Set per workspace, and kept across restarts."
           checked: root.scrolling
           enabled: !root.busy
           foreground: root.barForeground
@@ -236,11 +238,14 @@ Panel {
           Layout.fillWidth: true
           label: "Drop to any side"
           description: root.scrolling
-            ? "Not available on the scrolling layout: a dropped pane joins the row rather than splitting anything."
+            ? "Not available while this workspace is scrolling: a dropped pane joins the row rather than splitting anything."
             : (root.dropAnySide
                 ? "Dropping a dragged pane on another tiles it above, below or beside, by cursor position. The half it will take is shaded while you drag."
                 : "A dropped pane only ever tiles left or right. Switch on for above and below too, with the landing spot shaded while you drag.")
-          checked: root.dropAnySide
+          // Reads off while scrolling even when the Hyprland option is on: the
+          // switch describes what the workspace does, and it does not do this.
+          // The option is left alone, so it comes back with dwindle.
+          checked: root.dropAnySide && !root.scrolling
           enabled: !root.busy && !root.scrolling
           // `enabled` alone blocks the click but looks untouched, so the row
           // dims at the shell's own 0.45 to say why it stopped responding.
@@ -316,7 +321,7 @@ Panel {
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
           tooltipText: root.scrolling
-            ? "Split ratios are dwindle's; the scrolling layout has none"
+            ? "Split ratios are dwindle's; this workspace is scrolling"
             : "Restore default split ratios on the active workspace"
           onClicked: root.resetWorkspace()
         }
@@ -333,7 +338,7 @@ Panel {
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
           tooltipText: root.scrolling
-            ? "Split ratios are dwindle's; the scrolling layout has none"
+            ? "Split ratios are dwindle's; this workspace is scrolling"
             : "Restore default split ratios everywhere, and reload border settings"
           onClicked: root.resetAll()
         }

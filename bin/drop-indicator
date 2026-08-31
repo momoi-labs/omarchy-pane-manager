@@ -82,6 +82,16 @@ def landing_box(cursor, box, split_ratio):
     return ("up", (x, y, w, first))
 
 
+def workspace_layout(ws_id):
+    """The layout in force on one workspace. Not `general:layout`: that is only
+    the fallback, and a workspace rule — which is how Omarchy's own toggle pins
+    a workspace to scrolling — overrides it per workspace."""
+    for w in request_json("workspaces") or []:
+        if w.get("id") == ws_id:
+            return w.get("tiledLayout")
+    return None
+
+
 def window_box(c):
     return (c["at"][0], c["at"][1], c["size"][0], c["size"][1])
 
@@ -160,11 +170,8 @@ def main():
                     near = abs((x + w / 2) - cur["x"]) < 8 and abs((y + h / 2) - cur["y"]) < 8
                     # With precise_mouse_move off Hyprland only tiles left or
                     # right, so a four-way indicator would be promising
-                    # something it will not deliver. Stay quiet instead. The
-                    # geometry below is dwindle's, so any other layout is quiet
-                    # too rather than drawing a landing spot that is not there.
-                    dwindle = option("general:layout", "str") == "dwindle"
-                    if near and dwindle and option("dwindle:precise_mouse_move", "bool"):
+                    # something it will not deliver. Stay quiet instead.
+                    if near and option("dwindle:precise_mouse_move", "bool"):
                         dragging = {
                             "addr": addr,
                             "ws": me["workspace"]["id"],
@@ -198,6 +205,20 @@ def main():
         me = next((c for c in clients if c["address"] == dragging["addr"]), None)
         workspace = me["workspace"]["id"] if me else dragging["ws"]
 
+        # The geometry below is dwindle's. Dragging onto a scrolling workspace
+        # means the pane joins a row instead of splitting anything, so there is
+        # no half to shade — and since a drag can cross into one, this is
+        # re-read whenever the workspace under the drag changes.
+        if workspace != dragging.get("layout_of"):
+            dragging["layout_of"] = workspace
+            dragging["layout"] = workspace_layout(workspace)
+        if dragging["layout"] != "dwindle":
+            if dragging.get("shown"):
+                dragging["shown"] = False
+                emit({"dragging": False})
+            time.sleep(period)
+            continue
+
         target = pick_target(clients, (cur["x"], cur["y"]), dragging["addr"],
                              workspace)
         if target:
@@ -205,6 +226,7 @@ def main():
                               dragging["ratio"])
             if res:
                 direction, (bx, by, bw, bh) = res
+                dragging["shown"] = True
                 emit({"dragging": True, "dir": direction,
                       "x": round(bx), "y": round(by),
                       "w": round(bw), "h": round(bh),
