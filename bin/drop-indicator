@@ -160,8 +160,11 @@ def main():
                     near = abs((x + w / 2) - cur["x"]) < 8 and abs((y + h / 2) - cur["y"]) < 8
                     # With precise_mouse_move off Hyprland only tiles left or
                     # right, so a four-way indicator would be promising
-                    # something it will not deliver. Stay quiet instead.
-                    if near and option("dwindle:precise_mouse_move", "bool"):
+                    # something it will not deliver. Stay quiet instead. The
+                    # geometry below is dwindle's, so any other layout is quiet
+                    # too rather than drawing a landing spot that is not there.
+                    dwindle = option("general:layout", "str") == "dwindle"
+                    if near and dwindle and option("dwindle:precise_mouse_move", "bool"):
                         dragging = {
                             "addr": addr,
                             "ws": me["workspace"]["id"],

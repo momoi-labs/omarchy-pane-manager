@@ -27,6 +27,16 @@ target. Hyprland picks the side from your cursor but draws nothing to say which,
 so the result is hard to predict. Pane Manager shades the half the pane is about
 to take, live, while you drag.
 
+### Switch to the scrolling layout
+
+Hyprland ships a niri-like `scrolling` layout: new panes join a row that scrolls
+sideways instead of splitting the pane they land in. Reaching it otherwise means
+editing `~/.config/hypr/looknfeel.lua`; the panel makes it a switch.
+
+Splitting is dwindle's, so while scrolling is on the panel turns off what
+depends on it — the drop indicator, **Drop to any side**, and the two resets.
+**Drag the border** is layout-agnostic and keeps working.
+
 ### Border thickness and corners
 
 Width in px and Square/Round corners, applied as you change them.
@@ -63,6 +73,10 @@ pane is about to take, live, while you drag — see [Drop indicator](#drop-indic
 
 Left-clicking the bar icon opens it.
 
+- **Scrolling layout** — `general:layout`, `dwindle` or `scrolling`. On,
+  everything that reads a split tree is disabled: the drop indicator stays
+  quiet, **Drop to any side** greys out, and the resets refuse with
+  `not available on the scrolling layout`.
 - **Drag the border** — `general:resize_on_border` on and off.
   Turning it **off hands everything back to the system**: the border thickness,
   corner radius and grab area all revert to whatever `~/.config/hypr/` says.
@@ -79,7 +93,9 @@ Left-clicking the bar icon opens it.
   ratios, then reload the config
 
 Everything the panel changes is runtime-only, so the two resets and the off
-switch are all reliable ways back to your configured state.
+switch are all reliable ways back to your configured state. That cuts both ways
+for the layout: both of them reload the config, which puts `general:layout` back
+to whatever `~/.config/hypr/` says.
 
 ## Install
 
@@ -111,7 +127,7 @@ No other external dependencies, and nothing is fetched at runtime.
 
 ## Persisting the settings
 
-Both switches change Hyprland at runtime only — that is what makes the resets
+The switches change Hyprland at runtime only — that is what makes the resets
 and the off positions reliable ways back. To have them on at every login, and to
 give the resets the state you actually want to land on, put it in
 `~/.config/hypr/looknfeel.lua`:
@@ -119,6 +135,9 @@ give the resets the state you actually want to land on, put it in
 ```lua
 hl.config({
   general = {
+    -- "dwindle" splits the pane a new one lands in; "scrolling" adds it to a
+    -- row that scrolls sideways, niri style.
+    layout = "dwindle",
     resize_on_border = true,
     -- Pixels beyond the drawn border that still count as the handle. Larger is
     -- easier to grab; too large starts stealing clicks near a pane's edges.
@@ -162,14 +181,15 @@ The helper is usable on its own — handy for a keybinding:
 
 ```bash
 BIN=~/.config/omarchy/plugins/dev.momoi-labs.pane-manager/bin/pane-manager
-$BIN state                # JSON: enabled, grabArea, borderSize, rounding
+$BIN state                # JSON: enabled, grabArea, borderSize, rounding, layout
 $BIN enable [grabArea]
 $BIN disable              # also reverts border chrome to your config
 $BIN toggle [grabArea]
 $BIN border <px>
 $BIN corners <px>         # 0 = square
 $BIN dropside <bool>
-$BIN reset [--all]
+$BIN layout <dwindle|scrolling>
+$BIN reset [--all]        # dwindle only
 ```
 
 ## Drop indicator

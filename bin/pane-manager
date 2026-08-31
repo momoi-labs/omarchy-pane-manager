@@ -6,6 +6,7 @@
 #   pane-manager disable            → off, and border chrome back to config
 #   pane-manager toggle [grabArea]  → flip it
 #   pane-manager dropside <bool>    → drop a dragged pane on any side
+#   pane-manager layout <name>      → dwindle or scrolling
 #   pane-manager border <px>        → border thickness
 #   pane-manager corners <px>       → corner radius (0 = square)
 #   pane-manager reset [--all]      → reset split ratios, then reload config
@@ -25,6 +26,7 @@ command -v hyprctl >/dev/null || die "hyprctl is required"
 
 opt_bool() { hyprctl getoption "$1" -j | jq -r '.bool'; }
 opt_int()  { hyprctl getoption "$1" -j | jq -r '.int'; }
+opt_str()  { hyprctl getoption "$1" -j | jq -r '.str'; }
 
 is_uint() { [[ $1 =~ ^[0-9]+$ ]] || die "expected a whole number, got: $1"; }
 
@@ -97,8 +99,17 @@ reset_active_split() {
   done
 }
 
+# splitratio is a message only the dwindle layout answers: scrolling keeps a row
+# of panes rather than a tree of splits, so there is no ratio to restore.
+require_dwindle() {
+  local layout
+  layout=$(opt_str general:layout)
+  [[ $layout == dwindle ]] || die "not available on the $layout layout"
+}
+
 reset_layout() {
   local scope=$1 focused select ws addrs=() addr
+  require_dwindle
   focused=$(hyprctl activewindow -j | jq -r '.address // empty')
 
   if [[ $scope == all ]]; then
@@ -136,7 +147,8 @@ case "$cmd" in
       --argjson borderSize "$(opt_int general:border_size)" \
       --argjson rounding "$(opt_int decoration:rounding)" \
       --argjson dropAnySide "$(opt_bool dwindle:precise_mouse_move)" \
-      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding, dropAnySide: $dropAnySide}'
+      --arg layout "$(opt_str general:layout)" \
+      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding, dropAnySide: $dropAnySide, layout: $layout}'
     ;;
   enable)  set_resize_on_border true "${1:-}" ;;
   disable) disable_all ;;
@@ -161,6 +173,14 @@ case "$cmd" in
     case "${1:-}" in
       true|false) eval_lua "hl.config({ dwindle = { precise_mouse_move = $1 } })" ;;
       *) die "expected true or false, got: ${1:-}" ;;
+    esac
+    ;;
+  layout)
+    # Runtime-only, like every other switch here: `hyprctl reload` — which
+    # `disable` and `reset` both run — puts ~/.config/hypr/ back in charge.
+    case "${1:-}" in
+      dwindle|scrolling) eval_lua "hl.config({ general = { layout = \"$1\" } })" ;;
+      *) die "expected dwindle or scrolling, got: ${1:-}" ;;
     esac
     ;;
   reset)
