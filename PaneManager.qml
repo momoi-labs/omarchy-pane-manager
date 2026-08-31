@@ -54,8 +54,13 @@ Panel {
   function toggleDrag() { run([dragEnabled ? "disable" : "enable", String(grabArea)]) }
   function setBorderSize(px) { run(["border", String(px)]) }
   function toggleDropAnySide() { run(["dropside", dropAnySide ? "false" : "true"]) }
+  // Every workspace, not just this one: a layout you have to set workspace by
+  // workspace is a chore rather than a setting. `--workspace` is still there on
+  // the command line for a keybinding that wants the narrow version.
   function toggleScrolling() { run(["layout", scrolling ? "dwindle" : "scrolling"]) }
   function setCorners(style) { run(["corners", style === "round" ? String(roundedRadius) : "0"]) }
+  // `refresh` after every action already repaints the switches, so a reset that
+  // drops a scrolling override shows up here as well as on screen.
   function resetWorkspace() { run(["reset"], function() { root.statusMessage = "Current workspace reset" }) }
   function resetAll() { run(["reset", "--all"], function() { root.statusMessage = "All workspaces reset" }) }
 
@@ -210,8 +215,8 @@ Panel {
           Layout.fillWidth: true
           label: "Scrolling layout"
           description: root.scrolling
-            ? "This workspace puts new panes in a row that scrolls sideways, niri style. Splitting is dwindle's, so the controls it drives are off below."
-            : "This workspace splits the pane a new one lands in. Switch on for a niri-like row that scrolls sideways instead. Set per workspace, and kept across restarts."
+            ? "New panes join a row that scrolls sideways, niri style. Splitting is dwindle's, so the controls it drives are off below."
+            : "New panes split the pane they land in. Switch on for a niri-like row that scrolls sideways instead. Applies to every workspace, and is kept across restarts."
           checked: root.scrolling
           enabled: !root.busy
           foreground: root.barForeground
@@ -316,13 +321,10 @@ Panel {
           leftAlign: true
           bordered: true
           focusable: true
-          enabled: !root.busy && !root.scrolling
-          opacity: root.scrolling ? 0.45 : 1
+          enabled: !root.busy
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          tooltipText: root.scrolling
-            ? "Split ratios are dwindle's; this workspace is scrolling"
-            : "Restore default split ratios on the active workspace"
+          tooltipText: "Restore the layout and the default split ratios on the active workspace"
           onClicked: root.resetWorkspace()
         }
 
@@ -333,13 +335,10 @@ Panel {
           leftAlign: true
           bordered: true
           focusable: true
-          enabled: !root.busy && !root.scrolling
-          opacity: root.scrolling ? 0.45 : 1
+          enabled: !root.busy
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          tooltipText: root.scrolling
-            ? "Split ratios are dwindle's; this workspace is scrolling"
-            : "Restore default split ratios everywhere, and reload border settings"
+          tooltipText: "Restore the layout and the default split ratios everywhere, and reload border settings"
           onClicked: root.resetAll()
         }
       }

@@ -30,16 +30,19 @@ to take, live, while you drag.
 ### Switch to the scrolling layout
 
 Hyprland ships a niri-like `scrolling` layout: new panes join a row that scrolls
-sideways instead of splitting the pane they land in. It is set per workspace, so
-one workspace can scroll while the rest keep splitting.
+sideways instead of splitting the pane they land in. The switch applies it to
+every workspace; `bin/pane-manager layout scrolling --workspace` does just the
+active one, for a keybinding.
 
 Splitting is dwindle's, so on a scrolling workspace the panel turns off what
-depends on it — the drop indicator, **Drop to any side**, and the two resets.
-**Drag the border** is layout-agnostic and keeps working.
+depends on it — the drop indicator and **Drop to any side**. **Drag the border**
+is layout-agnostic and keeps working, and the two resets stay available: they
+are the way back.
 
-The switch writes the same per-workspace rule as Omarchy's own
+Hyprland tracks the layout per workspace, so the switch writes the same
+per-workspace rules as Omarchy's own
 `omarchy-hyprland-workspace-layout-toggle`, in
-`~/.local/state/omarchy/workspace-layouts/<id>.lua`, so the two agree and the
+`~/.local/state/omarchy/workspace-layouts/<id>.lua`. The two agree, and the
 choice survives a reload.
 
 ### Border thickness and corners
@@ -48,10 +51,10 @@ Width in px and Square/Round corners, applied as you change them.
 
 ### Undo a mangled layout
 
-Resizing a dwindle tree has no built-in undo. Two buttons restore the default
-split ratios, for the current workspace or all of them, and reload your Hyprland
-config on the way out — so they double as a way back from anything the panel
-changed.
+Resizing a dwindle tree has no built-in undo. Two buttons put things back, for
+the current workspace or all of them: they drop any scrolling override, reload
+your Hyprland config, and restore the default split ratios — so they double as a
+way back from anything the panel changed.
 
 ## Why
 
@@ -78,10 +81,10 @@ pane is about to take, live, while you drag — see [Drop indicator](#drop-indic
 
 Left-clicking the bar icon opens it.
 
-- **Scrolling layout** — the active workspace's layout, `dwindle` or
-  `scrolling`, as a workspace rule. On, everything that reads a split tree is
-  disabled: the drop indicator stays quiet, **Drop to any side** greys out, and
-  the resets refuse with `not available on the scrolling layout`. Unlike the
+- **Scrolling layout** — `dwindle` or `scrolling` on every workspace, written as
+  workspace rules. On, what reads a split tree goes quiet: the drop indicator
+  stops drawing and **Drop to any side** greys out and reads off, though the
+  Hyprland option under it is untouched and comes back with dwindle. Unlike the
   rest of the panel this one is persisted, next to Omarchy's own copy of it.
 - **Drag the border** — `general:resize_on_border` on and off.
   Turning it **off hands everything back to the system**: the border thickness,
@@ -95,8 +98,9 @@ Left-clicking the bar icon opens it.
   into its own chrome but only re-reads it at startup and on a theme change, so
   the plugin nudges `Style.scheduleRefresh()` after every change — otherwise the
   panel telling you "Square" would still be drawn with round corners itself.
-- **Reset this workspace** / **Reset all workspaces** — restore default split
-  ratios, then reload the config
+- **Reset this workspace** / **Reset all workspaces** — drop the layout override,
+  reload the config, then restore the default split ratios. They stay enabled on
+  a scrolling workspace, because they are the way off it.
 
 Everything else the panel changes is runtime-only, so the two resets and the off
 switch are all reliable ways back to your configured state.
@@ -131,8 +135,9 @@ No other external dependencies, and nothing is fetched at runtime.
 
 ## Persisting the settings
 
-The switches change Hyprland at runtime only — that is what makes the resets
-and the off positions reliable ways back. To have them on at every login, and to
+Apart from the layout, which is stored per workspace where Omarchy keeps it, the
+switches change Hyprland at runtime only — that is what makes the resets and the
+off positions reliable ways back. To have them on at every login, and to
 give the resets the state you actually want to land on, put it in
 `~/.config/hypr/looknfeel.lua`:
 
@@ -189,8 +194,8 @@ $BIN toggle [grabArea]
 $BIN border <px>
 $BIN corners <px>         # 0 = square
 $BIN dropside <bool>
-$BIN layout <dwindle|scrolling>   # the active workspace, persisted
-$BIN reset [--all]        # dwindle only
+$BIN layout <dwindle|scrolling> [--workspace]   # persisted; all workspaces
+$BIN reset [--all]        # layout override, config, then split ratios
 ```
 
 ## Drop indicator

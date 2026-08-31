@@ -6,10 +6,11 @@
 #   pane-manager disable            → off, and border chrome back to config
 #   pane-manager toggle [grabArea]  → flip it
 #   pane-manager dropside <bool>    → drop a dragged pane on any side
-#   pane-manager layout <name>      → dwindle or scrolling, this workspace
+#   pane-manager layout <name> [--workspace]
+#                                   → dwindle or scrolling, everywhere or here
+#   pane-manager reset [--all]      → restore the layout and the split ratios
 #   pane-manager border <px>        → border thickness
 #   pane-manager corners <px>       → corner radius (0 = square)
-#   pane-manager reset [--all]      → reset split ratios, then reload config
 #
 # Two things about hyprctl on Omarchy 4 (Hyprland's Lua config parser):
 #
@@ -99,37 +100,65 @@ reset_active_split() {
     out=$(hyprctl dispatch "hl.dsp.layout(\"$step\")" 2>&1)
     case "$out" in
       *"single node"*|*"no / single"*) return 0 ;;
+      # A workspace your own config pins to another layout has no split tree
+      # either. The layout reset above already did what it could.
+      *"no such layoutmsg"*) return 0 ;;
       error:*|warning:*) die "$(clean_msg "$out")" ;;
     esac
   done
 }
 
-# splitratio is a message only the dwindle layout answers: scrolling keeps a row
-# of panes rather than a tree of splits, so there is no ratio to restore.
-require_dwindle() {
-  local layout
-  layout=$(active_layout)
-  [[ $layout == dwindle ]] || die "not available on the $layout layout"
-}
-
 # Omarchy stores workspace layouts as one Lua file per workspace, replayed from
 # ~/.config/hypr/ on every reload (default/hypr/workspace-layouts.lua). Writing
-# the same file rather than inventing a second store means this switch and
+# the same store rather than inventing a second one means this switch and
 # `omarchy-hyprland-workspace-layout-toggle` stay in agreement, and the choice
 # survives the reload that `disable` and `reset` both run.
+LAYOUTS_DIR="$HOME/.local/state/omarchy/workspace-layouts"
+
+workspace_ids() { hyprctl workspaces -j | jq -r '.[].id'; }
+
+# The panel switches everything at once — a layout you have to set workspace by
+# workspace is a chore, not a setting. `--workspace` keeps the narrow version
+# for a keybinding, and matches what Omarchy's own toggle does.
 set_workspace_layout() {
-  local layout=$1 ws dir
-  ws=$(active_workspace)
-  [[ $ws =~ ^-?[0-9]+$ ]] || die "no active workspace"
-  dir="$HOME/.local/state/omarchy/workspace-layouts"
-  mkdir -p "$dir"
-  printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ws" "$layout" >"$dir/$ws.lua"
-  eval_lua "hl.workspace_rule({ workspace = \"$ws\", layout = \"$layout\" })"
+  local layout=$1 scope=$2 ws ids=()
+  if [[ $scope == workspace ]]; then
+    ids=("$(active_workspace)")
+    [[ ${ids[0]} =~ ^-?[0-9]+$ ]] || die "no active workspace"
+  else
+    mapfile -t ids < <(workspace_ids)
+  fi
+
+  mkdir -p "$LAYOUTS_DIR"
+  for ws in "${ids[@]}"; do
+    printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ws" "$layout" >"$LAYOUTS_DIR/$ws.lua"
+    eval_lua "hl.workspace_rule({ workspace = \"$ws\", layout = \"$layout\" })"
+  done
+}
+
+# Dropping the file is the whole reset: `hyprctl reload` replays what is left,
+# so the workspace falls back to `general:layout` from your own config.
+clear_workspace_layout() {
+  local scope=$1 ws
+  if [[ $scope == workspace ]]; then
+    ws=$(active_workspace)
+    [[ $ws =~ ^-?[0-9]+$ ]] && rm -f "$LAYOUTS_DIR/$ws.lua"
+    return 0
+  fi
+  rm -f "$LAYOUTS_DIR"/*.lua 2>/dev/null
+  return 0
 }
 
 reset_layout() {
   local scope=$1 focused select ws addrs=() addr
-  require_dwindle
+
+  # Layout first, and the reload that applies it: a workspace left on scrolling
+  # has no split tree, so the ratios below would have nothing to restore.
+  # Reload also puts border size, corner radius, resize_on_border and the grab
+  # area back to ~/.config/hypr/, discarding anything set at runtime.
+  clear_workspace_layout "$scope"
+  hyprctl reload >/dev/null
+
   focused=$(hyprctl activewindow -j | jq -r '.address // empty')
 
   if [[ $scope == all ]]; then
@@ -148,11 +177,11 @@ reset_layout() {
     reset_active_split
   done
 
-  [[ -n $focused ]] && dispatch "hl.dsp.focus({ window = \"address:$focused\" })"
-
-  # Reload restores border size, corner radius, resize_on_border and the grab
-  # area from ~/.config/hypr/, discarding anything set at runtime.
-  hyprctl reload >/dev/null
+  # Not `[[ … ]] && dispatch`: under `set -e` a false test would abort the
+  # whole run when nothing was focused to begin with.
+  if [[ -n $focused ]]; then
+    dispatch "hl.dsp.focus({ window = \"address:$focused\" })"
+  fi
   return 0
 }
 
@@ -199,8 +228,13 @@ case "$cmd" in
     # The one setting here that is not runtime-only: it is stored per workspace
     # where Omarchy keeps it, so a reload replays it rather than undoing it.
     case "${1:-}" in
-      dwindle|scrolling) set_workspace_layout "$1" ;;
+      dwindle|scrolling) ;;
       *) die "expected dwindle or scrolling, got: ${1:-}" ;;
+    esac
+    case "${2:-}" in
+      ""|--all)     set_workspace_layout "$1" all ;;
+      --workspace)  set_workspace_layout "$1" workspace ;;
+      *) die "unknown option: $2" ;;
     esac
     ;;
   reset)
