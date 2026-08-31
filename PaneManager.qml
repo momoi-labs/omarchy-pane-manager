@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import qs.Ui
 import qs.Commons
@@ -30,11 +31,116 @@ Panel {
   // The layout of the active workspace, not the global default: a workspace
   // rule can pin one workspace to scrolling while the rest stay on dwindle.
   property string layout: "dwindle"
-  // Splitting, the drop indicator and the ratio resets are all dwindle's; the
-  // scrolling layout answers none of them, so the panel stops offering them.
-  readonly property bool scrolling: layout === "scrolling"
   property string statusMessage: ""
   property bool busy: false
+
+  // ------------------------------------------------------------------ scope
+  //
+  // Three settings are answered per workspace on top of a global value, so the
+  // panel needs to say which of the two a click is editing. `scope` is "all" or
+  // a workspace id as a string; the helper's store is the source of truth for
+  // what each scope currently holds, while the properties above stay what
+  // Hyprland reports right now.
+  property var workspaces: []
+  property int activeWorkspace: 0
+  property var globalValues: ({})
+  property var overrides: ({})
+  property string scope: "all"
+
+  readonly property bool scopeIsAll: scope === "all"
+  // At global scope there is nothing to inherit from, so the third state would
+  // be an empty promise: the global value is what "default" means everywhere
+  // else.
+  // The same set the bar's own workspace widget shows: 1 to 5 always, plus
+  // whatever else is open up to 10. Scoping to a workspace that has nothing on
+  // it yet is the point — the answer is waiting when you get there.
+  readonly property var scopeWorkspaces: {
+    var ids = [1, 2, 3, 4, 5]
+    for (var i = 0; i < workspaces.length; i++) {
+      var id = Number(workspaces[i])
+      if (id > 0 && id <= 10 && ids.indexOf(id) < 0) ids.push(id)
+    }
+    ids.sort(function(left, right) { return left - right })
+    return ids
+  }
+
+  // Bare numbers: with ten of them the row has no width to spend on saying
+  // "ws" ten times. Where you are is underlined rather than spelled out, which
+  // is not the same thing as which scope is selected — you can set up 3 from 1.
+  readonly property var workspaceOptions: scopeWorkspaces.map(function(id) {
+    return {
+      value: String(id),
+      label: String(id),
+      marked: id === activeWorkspace,
+      tooltip: id === activeWorkspace ? "Workspace " + id + ", the one you are on" : "Workspace " + id
+    }
+  })
+
+  readonly property var scopeOptions: scopeIsAll
+    ? [{ value: "off", label: "Off" }, { value: "on", label: "On" }]
+    : [{ value: "default", label: "Default", tooltip: "Follow the global setting" },
+       { value: "off", label: "Off" }, { value: "on", label: "On" }]
+
+  readonly property var settingText: ({
+    layout: {
+      on: "New panes join a row that scrolls sideways, niri style.",
+      off: "New panes split the pane they land in, dwindle style."
+    },
+    drag: {
+      on: "Grab the divider to resize, no modifier held, with a " + grabArea + "px handle.",
+      off: "Only SUPER + right drag resizes."
+    },
+    dropside: {
+      on: "Dropping a dragged pane on another tiles it above, below or beside, by cursor position. The half it will take is shaded while you drag.",
+      off: "A dropped pane only ever tiles left or right."
+    }
+  })
+
+  // The store speaks Hyprland's vocabulary; the switches speak on / off, so a
+  // scrolling layout is the layout row's "on".
+  function uiValue(key, raw) {
+    if (key === "layout") return String(raw) === "scrolling" ? "on" : "off"
+    return raw === true ? "on" : "off"
+  }
+  function cliValue(key, value) {
+    if (value === "default") return "default"
+    if (key === "layout") return value === "on" ? "scrolling" : "dwindle"
+    return value
+  }
+
+  // What the global value is, whoever set it — the helper folds ~/.config/hypr/
+  // in, so this is never empty.
+  function globalOf(key) { return uiValue(key, globalValues ? globalValues[key] : undefined) }
+
+  // What the current scope holds: at workspace scope, "default" means the
+  // workspace has no answer of its own and takes the global one.
+  function storedOf(key) {
+    if (scopeIsAll) return globalOf(key)
+    var ws = overrides ? overrides[scope] : undefined
+    if (!ws || ws[key] === undefined) return "default"
+    return uiValue(key, ws[key])
+  }
+  function effectiveOf(key) {
+    var v = storedOf(key)
+    return v === "default" ? globalOf(key) : v
+  }
+
+  function badgeOf(key) {
+    if (scopeIsAll) return "ALL"
+    return storedOf(key) === "default"
+      ? "DEFAULT · " + globalOf(key).toUpperCase()
+      : "WS " + scope
+  }
+
+  function describe(key) {
+    var text = settingText[key][effectiveOf(key)]
+    if (scopeIsAll || storedOf(key) !== "default") return text
+    return "Follows the global setting: " + text.charAt(0).toLowerCase() + text.slice(1)
+  }
+
+  // A workspace on the scrolling layout has no split tree, so the row that
+  // depends on splitting says so rather than pretending to work.
+  readonly property bool scopeScrolling: effectiveOf("layout") === "on"
 
   readonly property string icon: "󰕰"  // nf-md-border_all
 
@@ -49,16 +155,22 @@ Panel {
 
   function refresh() { run(["state"]) }
 
-  // Off does more than flip a flag: it hands the border chrome back to
-  // ~/.config/hypr/ as well, so the switch is a clean "plugin, hands off".
-  function toggleDrag() { run([dragEnabled ? "disable" : "enable", String(grabArea)]) }
+  // One entry point for the three scoped settings: the scope picker decides
+  // where the value lands, and "default" is the absence of one rather than a
+  // value — at workspace scope it hands the answer back to the global setting,
+  // at global scope back to ~/.config/hypr/.
+  function setScoped(key, value) {
+    var args = ["set", key, cliValue(key, value)]
+    args = args.concat(scopeIsAll ? ["--all"] : ["--workspace", scope])
+    if (key === "drag") args = args.concat(["--grab", String(grabArea)])
+    run(args)
+  }
   function setBorderSize(px) { run(["border", String(px)]) }
-  function toggleDropAnySide() { run(["dropside", dropAnySide ? "false" : "true"]) }
-  // Every workspace, not just this one: a layout you have to set workspace by
-  // workspace is a chore rather than a setting. `--workspace` is still there on
-  // the command line for a keybinding that wants the narrow version.
-  function toggleScrolling() { run(["layout", scrolling ? "dwindle" : "scrolling"]) }
   function setCorners(style) { run(["corners", style === "round" ? String(roundedRadius) : "0"]) }
+  // `drag` and the drop side are global options in Hyprland: a per-workspace
+  // answer only exists while that workspace has focus, so it is written on the
+  // way in. Cheap enough to run on every switch, and it never reloads.
+  function applyActive() { run(["apply", "--grab", String(grabArea)]) }
   // `refresh` after every action already repaints the switches, so a reset that
   // drops a scrolling override shows up here as well as on screen.
   function resetWorkspace() { run(["reset"], function() { root.statusMessage = "Current workspace reset" }) }
@@ -71,7 +183,24 @@ Panel {
   DropIndicator {}
 
   Component.onCompleted: refresh()
-  onOpenedChanged: if (opened) { statusMessage = ""; refresh() }
+  // The scope resets to the active workspace on every open: a sticky "all" is
+  // how you change every workspace while believing you are changing this one.
+  onOpenedChanged: if (opened) { statusMessage = ""; scope = String(activeWorkspace); refresh() }
+
+  // Hyprland has no per-workspace resize_on_border or drop side, so the values
+  // the store holds for a workspace are written when it takes focus. Debounced:
+  // holding a workspace key walks through several in a row.
+  readonly property var focusedWorkspace: Hyprland.focusedWorkspace
+  onFocusedWorkspaceChanged: applyTimer.restart()
+
+  Timer {
+    id: applyTimer
+    interval: 120
+    onTriggered: {
+      if (root.busy) { restart(); return }
+      root.applyActive()
+    }
+  }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -111,6 +240,14 @@ Panel {
           root.rounding = Number(parsed.rounding) || 0
           root.dropAnySide = parsed.dropAnySide === true
           root.layout = String(parsed.layout || "dwindle")
+          root.workspaces = parsed.workspaces || []
+          root.activeWorkspace = Number(parsed.activeWorkspace) || 0
+          root.globalValues = parsed.global || ({})
+          root.overrides = parsed.overrides || ({})
+          // A scope pointing at a workspace the picker stopped showing would
+          // edit a store entry nobody can see, so it falls back to where you are.
+          if (root.scope !== "all" && root.scopeWorkspaces.indexOf(Number(root.scope)) < 0)
+            root.scope = String(root.activeWorkspace)
         } catch (e) {
           root.statusMessage = "Could not read Hyprland state"
         }
@@ -132,6 +269,14 @@ Panel {
       }
 
       if (done) done()
+
+      // Runs on every workspace change, so it stays out of everything below:
+      // the panel is usually closed, and nothing it touches is themed.
+      if (helperProc.action === "apply") {
+        if (root.opened) Qt.callLater(root.refresh)
+        return
+      }
+
       if (helperProc.action !== "state") {
         // Actions print nothing, so read the state back to catch up. `reset` in
         // particular reloads the Hyprland config and can change everything.
@@ -198,9 +343,8 @@ Panel {
               Layout.fillWidth: true
               text: root.statusMessage !== ""
                 ? root.statusMessage
-                : (root.dragEnabled
-                    ? root.activeGrabArea + "PX HANDLE · " + root.borderSize + "PX BORDER"
-                    : "DRAG OFF · " + root.borderSize + "PX BORDER")
+                : "WS " + root.activeWorkspace + " · " + root.layout.toUpperCase()
+                  + " · " + root.borderSize + "PX BORDER"
               color: Qt.darker(root.barForeground, 1.4)
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.caption
@@ -211,59 +355,115 @@ Panel {
           }
         }
 
-        Toggle {
+        // Scope picker. Two groups rather than one row of chips with `all` on
+        // the end: `all` is not another workspace, and reading it as one is how
+        // you change every workspace meaning to change this one. A Flow, not
+        // the shell's ButtonGroup, because the workspace list is however many
+        // are open and a Row of them would run off the panel.
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(10)
+
+          Text {
+            Layout.alignment: Qt.AlignTop
+            Layout.topMargin: Style.space(6)
+            text: "APPLY TO"
+            color: Qt.darker(root.barForeground, 1.4)
+            font.family: root.bar ? root.bar.fontFamily : Style.font.family
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 1.1
+          }
+
+          Flow {
+            Layout.fillWidth: true
+            spacing: Style.spacing.md
+
+            // Two blocks, not one: `all` is not another workspace, and reading
+            // it as one is how you change every workspace meaning to change
+            // this one. The Flow wraps them when the workspace list gets long.
+            Segmented {
+              options: root.workspaceOptions
+              value: root.scopeIsAll ? "" : root.scope
+              enabled: !root.busy
+              foreground: root.barForeground
+              fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+              onChanged: function(v) { root.scope = v }
+            }
+
+            Segmented {
+              options: [{ value: "all", label: "all", tooltip: "The value every workspace falls back to" }]
+              value: root.scopeIsAll ? "all" : ""
+              enabled: !root.busy
+              foreground: root.barForeground
+              fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+              onChanged: function(v) { root.scope = "all" }
+            }
+          }
+        }
+
+        Text {
+          Layout.fillWidth: true
+          text: root.scopeIsAll
+            ? "Changing a setting here changes it everywhere, and drops the workspaces' own answers."
+            : "Changing a setting here answers it for workspace " + root.scope + " only. Default hands it back to the global one."
+          color: Qt.darker(root.barForeground, 1.5)
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+
+        ScopedSetting {
           Layout.fillWidth: true
           label: "Scrolling layout"
-          description: root.scrolling
-            ? "New panes join a row that scrolls sideways, niri style. Splitting is dwindle's, so the controls it drives are off below."
-            : "New panes split the pane they land in. Switch on for a niri-like row that scrolls sideways instead. Applies to every workspace, and is kept across restarts."
-          checked: root.scrolling
-          enabled: !root.busy
+          badge: root.badgeOf("layout")
+          description: root.describe("layout")
+          options: root.scopeOptions
+          value: root.storedOf("layout")
+          interactive: !root.busy
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          onClicked: root.toggleScrolling()
+          onChanged: function(v) { root.setScoped("layout", v) }
         }
 
-        Toggle {
+        ScopedSetting {
           Layout.fillWidth: true
-          // The switch carries the state; the description carries what switching
-          // off does, which is more than clearing a flag.
           label: "Drag the border"
-          description: root.dragEnabled
-            ? "Grab the divider to resize, no modifier held. Switching off restores your Hyprland defaults."
-            : "Only SUPER + right drag resizes. Switching on uses a " + root.grabArea + "px handle; switching off restores your Hyprland defaults."
-          checked: root.dragEnabled
-          enabled: !root.busy
+          badge: root.badgeOf("drag")
+          description: root.describe("drag")
+          options: root.scopeOptions
+          value: root.storedOf("drag")
+          interactive: !root.busy
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          onClicked: root.toggleDrag()
+          onChanged: function(v) { root.setScoped("drag", v) }
         }
 
-        Toggle {
+        ScopedSetting {
           Layout.fillWidth: true
           label: "Drop to any side"
-          description: root.scrolling
-            ? "Not available while this workspace is scrolling: a dropped pane joins the row rather than splitting anything."
-            : (root.dropAnySide
-                ? "Dropping a dragged pane on another tiles it above, below or beside, by cursor position. The half it will take is shaded while you drag."
-                : "A dropped pane only ever tiles left or right. Switch on for above and below too, with the landing spot shaded while you drag.")
-          // Reads off while scrolling even when the Hyprland option is on: the
-          // switch describes what the workspace does, and it does not do this.
-          // The option is left alone, so it comes back with dwindle.
-          checked: root.dropAnySide && !root.scrolling
-          enabled: !root.busy && !root.scrolling
-          // `enabled` alone blocks the click but looks untouched, so the row
+          badge: root.badgeOf("dropside")
+          description: root.scopeScrolling
+            ? "Not available while this scope is on the scrolling layout: a dropped pane joins the row rather than splitting anything."
+            : root.describe("dropside")
+          options: root.scopeOptions
+          // Reads off on a scrolling workspace even when the option is on: the
+          // row describes what the workspace does, and it does not do this. The
+          // stored value is left alone, so it comes back with dwindle.
+          value: root.scopeScrolling ? "off" : root.storedOf("dropside")
+          interactive: !root.busy && !root.scopeScrolling
+          // `interactive` alone blocks the click but looks untouched, so the row
           // dims at the shell's own 0.45 to say why it stopped responding.
-          opacity: root.scrolling ? 0.45 : 1
+          opacity: root.scopeScrolling ? 0.45 : 1
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          onClicked: root.toggleDropAnySide()
+          onChanged: function(v) { root.setScoped("dropside", v) }
         }
 
         PanelSeparator { Layout.fillWidth: true; foreground: root.barForeground }
 
         PanelSectionHeader {
-          text: "BORDER"
+          text: "BORDER · EVERY WORKSPACE"
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
         }
@@ -295,8 +495,7 @@ Panel {
               font.pixelSize: Style.font.bodySmall
             }
 
-            ButtonGroup {
-              Layout.fillWidth: true
+            Segmented {
               enabled: !root.busy
               options: [
                 { value: "square", label: "Square", tooltip: "No corner radius" },

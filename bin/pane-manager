@@ -1,16 +1,26 @@
 #!/usr/bin/env bash
 # Helper for the Pane Manager Omarchy plugin.
 #
-#   pane-manager state              → JSON with the current Hyprland state
-#   pane-manager enable [grabArea]  → drag-the-border resizing on
-#   pane-manager disable            → off, and border chrome back to config
-#   pane-manager toggle [grabArea]  → flip it
-#   pane-manager dropside <bool>    → drop a dragged pane on any side
-#   pane-manager layout <name> [--workspace]
-#                                   → dwindle or scrolling, everywhere or here
+#   pane-manager state              → JSON with the current state and the store
+#   pane-manager set <key> <value> [--workspace [id] | --all] [--grab <px>]
+#                                   → layout | drag | dropside, scoped
+#   pane-manager apply [--grab <px>] → re-apply what the active workspace asks
 #   pane-manager reset [--all]      → restore the layout and the split ratios
-#   pane-manager border <px>        → border thickness
-#   pane-manager corners <px>       → corner radius (0 = square)
+#   pane-manager border <px>        → border thickness (global)
+#   pane-manager corners <px>       → corner radius, 0 = square (global)
+#
+#   Kept for keybindings written against 1.0:
+#   pane-manager enable [grabArea] | disable | toggle [grabArea]
+#   pane-manager dropside <bool>
+#   pane-manager layout <name> [--workspace | --all]
+#
+# Scope. `layout`, `drag` and `dropside` are stored per workspace on top of a
+# global value; `border`, `corners` and the grab area stay global, because they
+# are chrome rather than behaviour and Hyprland has no per-workspace notion of
+# them either. Only the layout is genuinely per workspace in Hyprland (a
+# workspace rule); the other two are global options, so the effective values are
+# re-applied whenever a workspace takes focus — that is what `apply` is for, and
+# the panel calls it on every workspace change.
 #
 # Two things about hyprctl on Omarchy 4 (Hyprland's Lua config parser):
 #
@@ -83,6 +93,7 @@ set_resize_on_border() { # $1 = true|false, $2 = grab area (optional)
 # well ask for it to be on.
 disable_all() {
   hyprctl reload >/dev/null
+  recapture_defaults
   eval_lua "hl.config({ general = { resize_on_border = false } })"
 }
 
@@ -117,23 +128,217 @@ LAYOUTS_DIR="$HOME/.local/state/omarchy/workspace-layouts"
 
 workspace_ids() { hyprctl workspaces -j | jq -r '.[].id'; }
 
-# The panel switches everything at once — a layout you have to set workspace by
-# workspace is a chore, not a setting. `--workspace` keeps the narrow version
-# for a keybinding, and matches what Omarchy's own toggle does.
-set_workspace_layout() {
-  local layout=$1 scope=$2 ws ids=()
-  if [[ $scope == workspace ]]; then
-    ids=("$(active_workspace)")
-    [[ ${ids[0]} =~ ^-?[0-9]+$ ]] || die "no active workspace"
+# The plugin's own store, next to Omarchy's. `global.json` is the value every
+# workspace falls back to; `overrides.json` is `{ "<ws>": { "<key>": value } }`
+# for the ones that disagree. Neither file exists until something is set, so a
+# fresh install — and everything after `reset --all` — reads straight from
+# ~/.config/hypr/.
+STORE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/pane-manager"
+GLOBAL_FILE="$STORE_DIR/global.json"
+OVERRIDES_FILE="$STORE_DIR/overrides.json"
+CONFIG_FILE="$STORE_DIR/config.json"
+
+SCOPED_KEYS=(layout drag dropside)
+
+write_store() { # $1 = file, stdin = JSON
+  mkdir -p "$STORE_DIR"
+  cat >"$1.tmp" && mv "$1.tmp" "$1"
+}
+
+# What ~/.config/hypr/ asks for, which is what the store falls back to. Note
+# `general:layout` rather than the active workspace's: this is the default a
+# workspace with no rule of its own lands on.
+#
+# Snapshotted, because `hyprctl getoption` answers with the value in force, not
+# the one in your config — and these are exactly the options this plugin
+# overwrites at runtime. Read live, "what the config says" would drift into
+# "whatever was applied last", and Default would stop meaning anything. The
+# snapshot is taken while the values are still untouched, and taken again after
+# every reload, which is the moment they are known to match the config.
+capture_defaults() {
+  [[ -f $CONFIG_FILE ]] && return 0
+  jq -cn \
+    --arg layout "$(hyprctl getoption general:layout -j | jq -r '.str')" \
+    --argjson drag "$(opt_bool general:resize_on_border)" \
+    --argjson dropside "$(opt_bool dwindle:precise_mouse_move)" \
+    '{layout: $layout, drag: $drag, dropside: $dropside}' | write_store "$CONFIG_FILE"
+}
+
+recapture_defaults() { # only right after a reload, where runtime == config
+  rm -f "$CONFIG_FILE"
+  capture_defaults
+}
+
+config_defaults() { capture_defaults; cat "$CONFIG_FILE"; }
+
+stored_global()  { [[ -f $GLOBAL_FILE ]] && cat "$GLOBAL_FILE" || echo '{}'; }
+read_overrides() { [[ -f $OVERRIDES_FILE ]] && cat "$OVERRIDES_FILE" || echo '{}'; }
+# Config first, the store on top: a key nobody set still reports a real value.
+read_global() { jq -cn --argjson d "$(config_defaults)" --argjson s "$(stored_global)" '$d + $s'; }
+
+# `has`, not jq's `//`: the alternative operator treats `false` as absent, so an
+# override that switches something off would silently read as "no override" and
+# fall back to the global value.
+effective() { # $1 = workspace id, $2 = key → the JSON value in force there
+  jq -rn \
+    --argjson g "$(read_global)" --argjson o "$(read_overrides)" \
+    --arg w "$1" --arg k "$2" \
+    'if (($o[$w] // {}) | has($k)) then $o[$w][$k] else $g[$k] end | tostring'
+}
+
+set_global_value() { # $1 = key, $2 = JSON value; `all` also drops the overrides
+  stored_global | jq -c --arg k "$1" --argjson v "$2" '.[$k] = $v' | write_store "$GLOBAL_FILE"
+  clear_override_key "$1"
+}
+
+clear_global_value() { # back to whatever ~/.config/hypr/ says
+  stored_global | jq -c --arg k "$1" 'del(.[$k])' | write_store "$GLOBAL_FILE"
+  clear_override_key "$1"
+}
+
+clear_override_key() { # drop one key from every workspace, pruning empties
+  read_overrides \
+    | jq -c --arg k "$1" 'map_values(del(.[$k])) | with_entries(select(.value | length > 0))' \
+    | write_store "$OVERRIDES_FILE"
+}
+
+set_override_value() { # $1 = workspace id, $2 = key, $3 = JSON value
+  read_overrides \
+    | jq -c --arg w "$1" --arg k "$2" --argjson v "$3" '.[$w] = ((.[$w] // {}) | .[$k] = $v)' \
+    | write_store "$OVERRIDES_FILE"
+}
+
+clear_override_value() { # $1 = workspace id, $2 = key → back to the global one
+  read_overrides \
+    | jq -c --arg w "$1" --arg k "$2" \
+        'if has($w) then .[$w] |= del(.[$k]) else . end | with_entries(select(.value | length > 0))' \
+    | write_store "$OVERRIDES_FILE"
+}
+
+# The layout somebody actually chose, empty when nobody did. Deliberately not
+# `effective`: that folds in `general:layout`, and pinning a workspace to the
+# value it was already falling back to would quietly outlive a later edit to
+# ~/.config/hypr/.
+explicit_layout() { # $1 = workspace id
+  jq -rn --argjson g "$(stored_global)" --argjson o "$(read_overrides)" --arg w "$1" \
+    '$o[$w].layout // $g.layout // ""'
+}
+
+sync_layout_rule() { # $1 = workspace id — write-only; see sync_layout_scope
+  local ws=$1 layout
+  layout=$(explicit_layout "$ws")
+  [[ -n $layout ]] || return 0
+  mkdir -p "$LAYOUTS_DIR"
+  printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ws" "$layout" >"$LAYOUTS_DIR/$ws.lua"
+  eval_lua "hl.workspace_rule({ workspace = \"$ws\", layout = \"$layout\" })"
+}
+
+# Going back to Default is the one direction that costs a reload: Hyprland keeps
+# a workspace rule until the config is replayed, so dropping the file is not
+# enough on its own. The reload also puts the global options back to
+# ~/.config/hypr/, hence the re-apply.
+sync_layout_scope() { # $1 = all | <workspace id>
+  local ws ids=() dropped=0
+  if [[ $1 == all ]]; then mapfile -t ids < <(workspace_ids); else ids=("$1"); fi
+
+  for ws in "${ids[@]}"; do
+    if [[ -n $(explicit_layout "$ws") ]]; then
+      sync_layout_rule "$ws"
+    elif [[ -f "$LAYOUTS_DIR/$ws.lua" ]]; then
+      rm -f "$LAYOUTS_DIR/$ws.lua"
+      dropped=1
+    fi
+  done
+
+  if (( dropped )); then
+    hyprctl reload >/dev/null
+    apply_global_options
+  fi
+  return 0
+}
+
+# `drag` and `dropside` are global options in Hyprland, so a per-workspace value
+# only means anything while that workspace has focus: it is written on the way
+# in, and the next workspace writes its own on top. The panel calls this on
+# every workspace change; nothing here reloads, or switching workspaces would
+# reset the border chrome each time.
+apply_global_options() { # $1 = grab area (optional) — for the active workspace
+  local ws grab=${1:-}
+  ws=$(active_workspace)
+  [[ $ws =~ ^-?[0-9]+$ ]] || return 0
+
+  if [[ $(effective "$ws" drag) == true ]]; then
+    set_resize_on_border true "$grab"
   else
-    mapfile -t ids < <(workspace_ids)
+    set_resize_on_border false
+  fi
+  eval_lua "hl.config({ dwindle = { precise_mouse_move = $(effective "$ws" dropside) } })"
+}
+
+apply_workspace() { # $1 = workspace id, $2 = grab area (optional)
+  local ws=$1 grab=${2:-}
+  [[ $ws =~ ^-?[0-9]+$ ]] || die "no active workspace"
+  sync_layout_rule "$ws"
+  [[ $ws == "$(active_workspace)" ]] && apply_global_options "$grab"
+  return 0
+}
+
+# layout dwindle|scrolling|default, drag/dropside on|off|default. `default` is
+# the third state of the panel's switches: not a value of its own, the absence
+# of one — at workspace scope it falls back to the global value, at global scope
+# to ~/.config/hypr/.
+store_value() { # $1 = key, $2 = user value → JSON, or empty for `default`
+  case "$1:$2" in
+    *:default)                return 0 ;;
+    layout:dwindle|layout:scrolling) printf '"%s"' "$2" ;;
+    drag:on|dropside:on)      printf 'true' ;;
+    drag:off|dropside:off)    printf 'false' ;;
+    layout:*)  die "expected dwindle, scrolling or default, got: $2" ;;
+    *)         die "expected on, off or default, got: $2" ;;
+  esac
+}
+
+cmd_set() {
+  local key=${1:-} value=${2:-} scope=all ws="" grab="" json
+  [[ -n $key && -n $value ]] || die "usage: set <layout|drag|dropside> <value> [--workspace [id] | --all]"
+  # shellcheck disable=SC2076
+  [[ " ${SCOPED_KEYS[*]} " =~ " $key " ]] || die "unknown setting: $key"
+  shift 2 || true
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --all)       scope=all ;;
+      --workspace) scope=workspace
+                   if [[ ${2:-} =~ ^-?[0-9]+$ ]]; then ws=$2; shift; fi ;;
+      --grab)      grab=${2:-}; is_uint "$grab"; shift ;;
+      *) die "unknown option: $1" ;;
+    esac
+    shift
+  done
+
+  json=$(store_value "$key" "$value")
+
+  if [[ $scope == all ]]; then
+    if [[ -z $json ]]; then clear_global_value "$key"; else set_global_value "$key" "$json"; fi
+    # A layout has to be pinned workspace by workspace; the other two are one
+    # global option each, so only the active workspace's value is in force.
+    if [[ $key == layout ]]; then
+      sync_layout_scope all
+    else
+      apply_global_options "$grab"
+    fi
+    return 0
   fi
 
-  mkdir -p "$LAYOUTS_DIR"
-  for ws in "${ids[@]}"; do
-    printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ws" "$layout" >"$LAYOUTS_DIR/$ws.lua"
-    eval_lua "hl.workspace_rule({ workspace = \"$ws\", layout = \"$layout\" })"
-  done
+  ws=${ws:-$(active_workspace)}
+  [[ $ws =~ ^-?[0-9]+$ ]] || die "no active workspace"
+  if [[ -z $json ]]; then clear_override_value "$ws" "$key"; else set_override_value "$ws" "$key" "$json"; fi
+  if [[ $key == layout ]]; then
+    sync_layout_scope "$ws"
+  elif [[ $ws == "$(active_workspace)" ]]; then
+    apply_global_options "$grab"
+  fi
+  return 0
 }
 
 # Dropping the file is the whole reset: `hyprctl reload` replays what is left,
@@ -142,10 +347,23 @@ clear_workspace_layout() {
   local scope=$1 ws
   if [[ $scope == workspace ]]; then
     ws=$(active_workspace)
-    [[ $ws =~ ^-?[0-9]+$ ]] && rm -f "$LAYOUTS_DIR/$ws.lua"
+    [[ $ws =~ ^-?[0-9]+$ ]] || return 0
+    rm -f "$LAYOUTS_DIR/$ws.lua"
+    # The store outlives the file: without this, the next time the workspace
+    # takes focus `apply` writes the rule straight back.
+    read_overrides | jq -c --arg w "$ws" 'del(.[$w])' | write_store "$OVERRIDES_FILE"
     return 0
   fi
   rm -f "$LAYOUTS_DIR"/*.lua 2>/dev/null
+  rm -f "$GLOBAL_FILE" "$OVERRIDES_FILE"
+  return 0
+}
+
+# Both resets reload, so both end with the runtime matching ~/.config/hypr/ —
+# the one moment a fresh snapshot of it can be taken.
+after_reset() { # $1 = all | workspace
+  recapture_defaults
+  [[ $1 == workspace ]] && apply_global_options
   return 0
 }
 
@@ -190,6 +408,9 @@ cmd=${1:-state}
 
 case "$cmd" in
   state)
+    # Two halves: what Hyprland reports right now — the bar widget and the
+    # border fields read that — and the store, which is what the scoped
+    # switches paint. `workspaces` drives the scope picker.
     jq -cn \
       --argjson enabled "$(opt_bool general:resize_on_border)" \
       --argjson grabArea "$(opt_int general:extend_border_grab_area)" \
@@ -197,15 +418,35 @@ case "$cmd" in
       --argjson rounding "$(opt_int decoration:rounding)" \
       --argjson dropAnySide "$(opt_bool dwindle:precise_mouse_move)" \
       --arg layout "$(active_layout)" \
-      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding, dropAnySide: $dropAnySide, layout: $layout}'
+      --argjson activeWorkspace "$(active_workspace)" \
+      --argjson workspaces "$(hyprctl workspaces -j | jq -c '[.[].id] | sort')" \
+      --argjson global "$(read_global)" \
+      --argjson overrides "$(read_overrides)" \
+      '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding,
+        dropAnySide: $dropAnySide, layout: $layout, activeWorkspace: $activeWorkspace,
+        workspaces: $workspaces, global: $global, overrides: $overrides}'
     ;;
-  enable)  set_resize_on_border true "${1:-}" ;;
-  disable) disable_all ;;
+  set) cmd_set "$@" ;;
+  apply)
+    # Called on every workspace change, so it must stay cheap and quiet.
+    grab=""
+    [[ ${1:-} == --grab ]] && { grab=${2:-}; is_uint "$grab"; }
+    apply_workspace "$(active_workspace)" "$grab"
+    ;;
+  enable)  cmd_set drag on --all ${1:+--grab "$1"} ;;
+  disable)
+    # The 1.0 meaning, kept: hand the border chrome back to ~/.config/hypr/ and
+    # force the flag off. Clearing the store first stops `apply` putting it back
+    # on the next workspace change.
+    clear_global_value drag
+    disable_all
+    ;;
   toggle)
-    if [[ $(opt_bool general:resize_on_border) == true ]]; then
+    if [[ $(effective "$(active_workspace)" drag) == true ]]; then
+      clear_global_value drag
       disable_all
     else
-      set_resize_on_border true "${1:-}"
+      cmd_set drag on --all ${1:+--grab "$1"}
     fi
     ;;
   border)
@@ -220,7 +461,8 @@ case "$cmd" in
     # Gates both halves of the feature at once: Hyprland's four-way drop, and
     # the overlay, which stays quiet whenever this is off.
     case "${1:-}" in
-      true|false) eval_lua "hl.config({ dwindle = { precise_mouse_move = $1 } })" ;;
+      true)  cmd_set dropside on --all ;;
+      false) cmd_set dropside off --all ;;
       *) die "expected true or false, got: ${1:-}" ;;
     esac
     ;;
@@ -232,13 +474,23 @@ case "$cmd" in
       *) die "expected dwindle or scrolling, got: ${1:-}" ;;
     esac
     case "${2:-}" in
-      ""|--all)     set_workspace_layout "$1" all ;;
-      --workspace)  set_workspace_layout "$1" workspace ;;
+      ""|--all)     cmd_set layout "$1" --all ;;
+      --workspace)  cmd_set layout "$1" --workspace ;;
       *) die "unknown option: $2" ;;
     esac
     ;;
   reset)
-    [[ ${1:-} == --all ]] && reset_layout all || reset_layout workspace
+    if [[ ${1:-} == --all ]]; then
+      # The store is gone with it, so what the reload restored is what stands.
+      reset_layout all
+      after_reset all
+    else
+      reset_layout workspace
+      # The reload above is global: it puts drag and the drop side back to
+      # ~/.config/hypr/ even though only this workspace was reset, so what the
+      # store still holds is applied again on top.
+      after_reset workspace
+    fi
     ;;
   *) die "unknown command: $cmd" ;;
 esac
