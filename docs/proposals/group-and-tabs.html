@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pane Manager — panel with tabs and grouped sections</title>
+<style>
+  :root{
+    --bg:#0f1220; --panel:#151a2b; --card:#1b2033; --card-2:#1f2540;
+    --line:#2b3149; --fg:#e4e6f2; --muted:#8d93ad; --dim:#6d7391; --accent:#7aa2f7;
+    --radius:10px;
+    --mono:"JetBrains Mono","Fira Code",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:40px 28px 96px;background:var(--bg);color:var(--fg);
+    font-family:var(--mono);font-size:14px;line-height:1.5}
+  h1{font-size:20px;margin:0 0 6px}
+  h2{font-size:15px;margin:52px 0 4px}
+  p.lead{color:var(--muted);font-size:13px;margin:0;max-width:78ch}
+  code{color:#c0caf5}
+  .row{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start;margin-top:22px}
+  .col{width:392px}
+  .cap{font-size:11px;color:var(--dim);margin:8px 2px 0;line-height:1.45}
+  .pick{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 2px 6px}
+
+  /* ---------- panel chrome ---------- */
+  .panel{width:392px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .head{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+  .head .ico{font-size:26px;line-height:1}
+  .head .ttl{font-size:15px;font-weight:700}
+  .head .sub{font-size:10.5px;letter-spacing:.11em;font-weight:700;color:var(--muted);margin-top:2px}
+
+  /* ---------- underline tabs ---------- */
+  .tabs{display:flex;gap:18px;border-bottom:1px solid var(--line);margin-bottom:14px}
+  .tabs button{font-family:inherit;font-size:12px;background:none;border:0;cursor:pointer;
+    color:var(--dim);padding:8px 0 9px;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs button.on{color:var(--fg);border-bottom-color:var(--accent)}
+  /* caption line that replaces a redundant group header */
+  .tabcap{display:flex;gap:8px;align-items:baseline;margin:11px 0 10px}
+  .tabcap .d{font-size:11px;color:var(--dim);flex:1;min-width:0}
+  .tabcap .b{font-size:10.5px;letter-spacing:.11em;color:var(--dim);white-space:nowrap}
+
+  /* ---------- left-rail group ---------- */
+  .group{display:flex;gap:12px}
+  .group + .group{margin-top:16px}
+  .group > .rail{width:2px;border-radius:2px;background:var(--line);flex:none}
+  .group > .body{flex:1;min-width:0}
+  .group.dim{opacity:.45}
+  .group .glabel{display:flex;gap:8px;align-items:baseline;margin-bottom:9px}
+  .group .glabel .l{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  /* a setting's own title: same rail, named like a control rather than a section */
+  .group .glabel .l2{font-size:13px;font-weight:700;color:var(--fg)}
+  .group .glabel .b{font-size:10.5px;letter-spacing:.11em;color:var(--dim);margin-left:auto}
+  .group .gdesc{font-size:11.5px;color:var(--muted);margin:-4px 0 9px}
+
+  /* ---------- fake controls ---------- */
+  .stack{display:flex;flex-direction:column;gap:10px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
+  .card .hd{display:flex;align-items:baseline;gap:8px}
+  .card .t{font-weight:700;font-size:13px}
+  .card .badge{margin-left:auto;font-size:10px;letter-spacing:.11em;font-weight:700;color:var(--dim)}
+  .card .s{font-size:11px;color:var(--muted);margin-top:3px}
+  .seg{display:flex;margin-top:9px}
+  .seg button{font-family:inherit;font-size:11px;color:var(--muted);background:transparent;
+    border:1px solid var(--line);padding:4px 11px;cursor:pointer;margin-left:-1px}
+  .seg button:first-child{margin-left:0;border-radius:6px 0 0 6px}
+  .seg button:last-child{border-radius:0 6px 6px 0}
+  .seg button.on{color:var(--fg);background:var(--card-2);border-color:#3b4266;position:relative;z-index:1}
+  .btn{display:flex;align-items:center;gap:10px;background:transparent;border:1px solid var(--line);
+    border-radius:var(--radius);padding:9px 12px;font-size:12.5px;cursor:pointer;color:var(--fg);
+    font-family:inherit;width:100%;text-align:left}
+  .num .box{border:1px solid var(--line);border-radius:8px;padding:5px 10px;background:var(--card);font-size:12px;display:inline-block}
+  .lbl{font-size:11px;color:var(--muted);margin-bottom:6px}
+
+  ul.notes{margin:12px 0 0;padding-left:18px;color:var(--muted);font-size:12.5px;max-width:82ch}
+  ul.notes li{margin:5px 0}
+  ul.notes b{color:var(--fg);font-weight:700}
+  .q{border-left:2px solid var(--line);padding:2px 0 2px 12px;margin:14px 0;color:var(--muted);font-size:12.5px;max-width:82ch}
+  .q b{color:var(--fg)}
+  footer{margin-top:56px;color:var(--dim);font-size:11px;max-width:82ch}
+</style>
+</head>
+<body>
+
+<h1>Pane Manager — panel with tabs and grouped sections</h1>
+<p class="lead">All decided. Group = left rail, no accent. Tabs = underline, three of them, <em>Reset</em>
+included. <em>Apply to</em> sits above the tab strip and governs the panel. Tab and section no longer
+repeat each other: <b style="color:var(--fg)">a tab with one section has no group header</b> — option A in
+section 2. The panel below is the target; section 3 is what gets built.</p>
+
+<h2>1. The panel</h2>
+
+<div class="row">
+  <div class="col">
+    <div class="panel" data-tabs>
+      <div class="head">
+        <div class="ico">▦</div>
+        <div>
+          <div class="ttl">Pane Manager</div>
+          <div class="sub">WS 4 · DWINDLE · 2PX BORDER</div>
+        </div>
+      </div>
+
+      <!-- Apply to: above the tabs, governs the whole panel -->
+      <div class="group" style="margin-bottom:16px">
+        <div class="rail"></div>
+        <div class="body">
+          <div class="glabel"><span class="l">Apply to</span><span class="b">WS 4</span></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <div class="seg" style="margin:0"><button>1</button><button class="on">4</button><button>7</button></div>
+            <div class="seg" style="margin:0"><button>all</button></div>
+          </div>
+          <div class="gdesc" style="margin:9px 0 0">
+            Scopes the pane settings to workspace 4. Border is session-wide and ignores this.
+          </div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="on" data-tab="panes">Panes</button>
+        <button data-tab="border">Border</button>
+        <button data-tab="reset">Reset</button>
+      </div>
+
+      <!-- PANES: each setting is a rail group; no caption, the tab says it -->
+      <div data-pane="panes">
+        <div class="group">
+          <div class="rail"></div>
+          <div class="body">
+            <div class="glabel"><span class="l2">Scrolling layout</span><span class="b">DEFAULT · OFF</span></div>
+            <div class="gdesc">Follows the global setting: panes split the one they land in.</div>
+            <div class="seg" style="margin:0"><button class="on">Default</button><button>Off</button><button>On</button></div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="rail"></div>
+          <div class="body">
+            <div class="glabel"><span class="l2">Drag the border</span><span class="b">WS 4</span></div>
+            <div class="gdesc">The boundary between two panes resizes them on drag.</div>
+            <div class="seg" style="margin:0"><button>Default</button><button>Off</button><button class="on">On</button></div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="rail"></div>
+          <div class="body">
+            <div class="glabel"><span class="l2">Drop to any side</span><span class="b">DEFAULT · ON</span></div>
+            <div class="gdesc">A dragged pane tiles on the side the cursor points at.</div>
+            <div class="seg" style="margin:0"><button class="on">Default</button><button>Off</button><button>On</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- BORDER -->
+      <div data-pane="border" hidden>
+        <div class="group">
+          <div class="rail"></div>
+          <div class="body">
+            <div class="tabcap" style="margin-top:0">
+              <span class="d">Hyprland keeps one border for the whole session, so this is not scoped.</span>
+              <span class="b">EVERY WORKSPACE</span>
+            </div>
+            <div style="display:flex;gap:18px">
+              <div><div class="lbl">Thickness (px)</div><div class="num"><span class="box">− 2 +</span></div></div>
+              <div><div class="lbl">Corners</div>
+                <div class="seg" style="margin:0"><button class="on">Square</button><button>Round</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RESET -->
+      <div data-pane="reset" hidden>
+        <div class="group">
+          <div class="rail"></div>
+          <div class="body">
+            <div class="tabcap" style="margin-top:0">
+              <span class="d">Puts the layout and the default split ratios back — also the way out of the scrolling layout.</span>
+            </div>
+            <div class="stack">
+              <button class="btn">↺ Reset this workspace</button>
+              <button class="btn">⟲ Reset all workspaces</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">Tabs are clickable. The boxed cards are gone: a setting <em>is</em> a rail group — title,
+    badge, description and its control hanging off one line. Rail is always <code>--line</code>, no accent variant.
+    <em>Panes</em> has no caption because its three rows say it themselves; <em>Border</em> and <em>Reset</em> keep one
+    because their scope is not obvious from the tab name.</p>
+  </div>
+
+  <!-- disabled state -->
+  <div class="col">
+    <div class="panel">
+      <div class="head"><div class="ico">▦</div><div>
+        <div class="ttl">Disabled, without a box</div>
+        <div class="sub">WS 4 · SCROLLING · 2PX BORDER</div>
+      </div></div>
+      <div class="tabs"><button class="on">Panes</button><button>Border</button><button>Reset</button></div>
+
+      <div class="group">
+        <div class="rail"></div>
+        <div class="body">
+          <div class="glabel"><span class="l2">Scrolling layout</span><span class="b">WS 4</span></div>
+          <div class="gdesc">New panes join a row that scrolls sideways.</div>
+          <div class="seg" style="margin:0"><button>Default</button><button>Off</button><button class="on">On</button></div>
+        </div>
+      </div>
+
+      <div class="group dim">
+        <div class="rail"></div>
+        <div class="body">
+          <div class="glabel"><span class="l2">Drop to any side</span><span class="b">DEFAULT · ON</span></div>
+          <div class="gdesc">Not available while this scope is on the scrolling layout: a dropped pane
+          joins the row rather than splitting anything.</div>
+          <div class="seg" style="margin:0"><button>Default</button><button class="on">Off</button><button>On</button></div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">The whole group dims at 0.45 — rail included — so the row that stopped
+    responding says so as one thing. Same value the shell already uses.</p>
+  </div>
+
+  <!-- what a group is still for -->
+  <div class="col">
+    <div class="panel">
+      <div class="head"><div class="ico">▦</div><div>
+        <div class="ttl">Where a group still earns its place</div>
+        <div class="sub">A TAB THAT HOLDS TWO SECTIONS</div>
+      </div></div>
+      <div class="tabs"><button>Panes</button><button class="on">Looks</button><button>Reset</button></div>
+      <div class="tabcap"><span class="d">Decoration, applied to every workspace.</span></div>
+
+      <div class="group">
+        <div class="rail"></div>
+        <div class="body">
+          <div class="glabel"><span class="l">Border</span></div>
+          <div style="display:flex;gap:18px">
+            <div><div class="lbl">Thickness (px)</div><div class="num"><span class="box">− 2 +</span></div></div>
+            <div><div class="lbl">Corners</div>
+              <div class="seg" style="margin:0"><button class="on">Square</button><button>Round</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="rail"></div>
+        <div class="body">
+          <div class="glabel"><span class="l">Gaps</span></div>
+          <div style="display:flex;gap:18px">
+            <div><div class="lbl">Inner (px)</div><div class="num"><span class="box">− 5 +</span></div></div>
+            <div><div class="lbl">Outer (px)</div><div class="num"><span class="box">− 10 +</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cap">Illustrative, not proposed — Gaps is not a feature today. It shows the rule:
+    the rail appears the moment a tab has more than one section, and stays out of the way when it has one.</p>
+  </div>
+</div>
+
+<h2>2. Tab vs. section — three ways out</h2>
+<p class="lead">The duplication is real: a tab already titles its content, so a single group inside
+it repeats the word and adds a rail around everything, which groups nothing.</p>
+
+<ul class="notes">
+  <li><b>A · The tab is the section title. <span style="color:var(--accent)">Recommended, drawn above.</span></b>
+  A tab with one section keeps the rail but drops the label — the strip is the label. The badge and the
+  one-line description stay, as a caption at the top of the railed body. A tab with two or more sections
+  gives each one its own labelled <code>Group</code> instead.
+  <br>Gain: nothing is said twice, and the rail still says where the tab's content begins and ends.</li>
+
+  <li><b>B · Rename the tabs one level up.</b> Keep every section in a group and make tab names broader
+  than section names — <em>Panes / Looks / Reset</em>, with <code>BORDER</code> and later <code>GAPS</code> as sections inside
+  <em>Looks</em>. No duplication because the words differ by design.
+  <br>Cost: today <em>Looks</em> has exactly one section, so the rail is decoration until a second one exists.</li>
+
+  <li><b>C · Drop the tabs for now.</b> One scrolling column of rail groups, tabs introduced when there
+  are enough sections to need them (4+).
+  <br>Cost: the panel keeps growing downward, which is what started this.</li>
+</ul>
+
+<h2>3. What I'd build</h2>
+<ul class="notes">
+  <li><b><code>Group.qml</code></b> — 2px rail, <code>label</code>, optional right-aligned <code>badge</code>, optional <code>description</code>,
+  content as the default property; the label is optional, so a one-section tab uses the same component
+  headerless. No accent state.</li>
+  <li><b><code>Tabs.qml</code></b> — underline strip plus optional <code>caption</code> / <code>badge</code> line, one Tab stop,
+  <code>h</code>/<code>l</code> and ←/→ to move, Enter/Space to activate: the same keyboard grammar as <code>Segmented.qml</code>.
+  The strip holds the current tab in a property on the panel root, so it outlives an open/close cycle but not
+  a shell reload. <code>caption</code> and <code>badge</code> are optional and left empty on <em>Panes</em>.</li>
+  <li><b><code>ScopedSetting.qml</code></b> — stops being a <code>BorderSurface</code> and becomes a <code>Group</code>: the box
+  around each setting goes away, the rail carries it instead. Same properties, same signal.</li>
+  <li><b><code>PaneManager.qml</code></b> — Apply to becomes a Group above the strip; the three scoped rows,
+  the border controls and the two resets move into tabs; both <code>PanelSectionHeader</code>s, all four
+  <code>PanelSeparator</code>s (including the duplicated pair at lines 512–514) come out.</li>
+</ul>
+
+<h2>4. Decisions</h2>
+<ul class="notes">
+  <li><b>Option A</b> for the tab/section overlap: a tab with one section keeps the rail and drops the label.
+  So <em>Border</em> and <em>Reset</em> have no group title — only their caption.</li>
+  <li><b>Caption only where it adds something.</b> <em>Panes</em> has none: three titled rows already say what the
+  tab is. <em>Border</em> and <em>Reset</em> keep theirs, because "every workspace" and "this also undoes the
+  scrolling layout" are not readable off the tab name.</li>
+  <li><b>Cards become rails.</b> <code>ScopedSetting</code> loses its <code>BorderSurface</code>; the rail carries the row.</li>
+  <li><b>Disabled dims the whole group, rail included</b>, at the shell's 0.45.</li>
+  <li><b>Reset keeps its own tab</b> — it is the way out of a mangled layout, so it stays one keystroke away.</li>
+  <li><b>Last tab is remembered in memory</b>, not on disk: the panel reopens where you left it and falls back
+  to <em>Panes</em> after a shell reload.</li>
+  <li><b>No accent rail</b> — the per-row badges already say which values differ from global.</li>
+</ul>
+
+<footer>
+Colours, radii and the 1px seam are sampled from the running panel; the real components read them
+from <code>Style</code> / <code>Color</code> so themes keep working.
+</footer>
+
+<script>
+document.querySelectorAll('[data-tabs]').forEach(function (root) {
+  root.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-tab]');
+    if (!btn) return;
+    root.querySelectorAll('[data-tab]').forEach(function (b) { b.classList.toggle('on', b === btn) });
+    root.querySelectorAll('[data-pane]').forEach(function (p) { p.hidden = p.dataset.pane !== btn.dataset.tab });
+  });
+});
+</script>
+</body>
+</html>
