@@ -27,6 +27,20 @@ target. Hyprland picks the side from your cursor but draws nothing to say which,
 so the result is hard to predict. Pane Manager shades the half the pane is about
 to take, live, while you drag.
 
+### Open a pane where the mouse is
+
+Dropping a pane already follows your cursor. Opening one does not: Hyprland
+splits the *focused* pane on a side your config picked, and Omarchy picks
+right/bottom, so the mouse has no say. **Open to any side** makes the two the
+same operation — a new pane splits whatever is under the mouse, on the side the
+mouse is nearest.
+
+It is one row over two Hyprland options, `dwindle:smart_split` and
+`dwindle:use_active_for_splits`, because neither is the behaviour on its own:
+the first decides the side, the second decides whether the pane under the cursor
+is the one being split at all. Set only the first and a new pane still lands on
+the focused pane, which is the surprise the row exists to remove.
+
 ### Switch to the scrolling layout
 
 Hyprland ships a niri-like `scrolling` layout: new panes join a row that scrolls
@@ -35,7 +49,8 @@ every workspace; `bin/pane-manager layout scrolling --workspace` does just the
 active one, for a keybinding.
 
 Splitting is dwindle's, so on a scrolling workspace the panel turns off what
-depends on it — the drop indicator and **Drop to any side**. **Drag the border**
+depends on it — the drop indicator, **Open to any side** and **Drop to any
+side**. **Drag the border**
 is layout-agnostic and keeps working, and the two resets stay available: they
 are the way back.
 
@@ -47,9 +62,10 @@ choice survives a reload.
 
 ### Per workspace, or everywhere
 
-The three behaviour switches — **Scrolling layout**, **Drag the border** and
-**Drop to any side** — are answered per workspace on top of a global value, and
-**Apply to** at the top of the panel says which of the two you are editing:
+The four behaviour switches — **Scrolling layout**, **Drag the border**,
+**Open to any side** and **Drop to any side** — are answered per workspace on
+top of a global value, and **Apply to** at the top of the panel says which of
+the two you are editing:
 
 - `all` writes the global value: what every workspace falls back to. Setting it
   drops the workspaces' own answers, so what the panel shows is what you get
@@ -119,18 +135,25 @@ Left-clicking the bar icon opens it. **Apply to** sits above three tabs —
 would be easy to set and forget inside one of them. The panel reopens on the tab
 you left it on, until the shell restarts.
 
-- **Apply to** — `ws <id>` or `all`: where the three switches in **Panes**
+- **Apply to** — `ws <id>` or `all`: where the four switches in **Panes**
   write. See [Per workspace, or everywhere](#per-workspace-or-everywhere).
 
 **Panes**
 
 - **Scrolling layout** — `dwindle` (Off) or `scrolling` (On), written as
   workspace rules. On, what reads a split tree goes quiet: the drop indicator
-  stops drawing and **Drop to any side** greys out and reads off, though the
-  Hyprland option under it is untouched and comes back with dwindle.
+  stops drawing, and **Open to any side** and **Drop to any side** grey out and
+  read off — though the Hyprland options under them are untouched and come back
+  with dwindle.
 - **Drag the border** — `general:resize_on_border` on and off, with the grab
   area from the settings. Off here means off, not "hand everything back": the
   two resets are what returns the border chrome to `~/.config/hypr/`.
+- **Open to any side** — `dwindle:smart_split` on and
+  `dwindle:use_active_for_splits` off, together. Off, a new pane always splits
+  the focused one on the side your config picked. On, it splits the pane under
+  the mouse, on the side the mouse is nearest. Off writes Hyprland's own default
+  back for the second option rather than a snapshot of yours; a config that
+  turns `use_active_for_splits` off by hand gets it back from a reset.
 - **Drop to any side** — `dwindle:precise_mouse_move`. Off, a dropped pane only
   ever tiles left or right. On, it tiles above and below too, by cursor
   position, and the landing spot is shaded while you drag. Gates both halves at
@@ -247,9 +270,9 @@ $BIN corners <px>         # global; 0 = square
 $BIN reset [--all]        # overrides, config, then split ratios
 ```
 
-`set` takes `layout` (`dwindle`, `scrolling`, `default`), `drag` and `dropside`
-(`on`, `off`, `default`), and defaults to `--all`. So a keybinding that flips
-just the workspace you are on is:
+`set` takes `layout` (`dwindle`, `scrolling`, `default`), and `drag`,
+`dropside` and `openside` (`on`, `off`, `default`), and defaults to `--all`. So
+a keybinding that flips just the workspace you are on is:
 
 ```bash
 $BIN set layout scrolling --workspace

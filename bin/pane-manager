@@ -3,7 +3,7 @@
 #
 #   pane-manager state              → JSON with the current state and the store
 #   pane-manager set <key> <value> [--workspace [id] | --all] [--grab <px>]
-#                                   → layout | drag | dropside, scoped
+#                                   → layout | drag | dropside | openside, scoped
 #   pane-manager apply [--grab <px>] → re-apply what the active workspace asks
 #   pane-manager reset [--all]      → restore the layout and the split ratios
 #   pane-manager border <px>        → border thickness (global)
@@ -14,8 +14,8 @@
 #   pane-manager dropside <bool>
 #   pane-manager layout <name> [--workspace | --all]
 #
-# Scope. `layout`, `drag` and `dropside` are stored per workspace on top of a
-# global value; `border`, `corners` and the grab area stay global, because they
+# Scope. `layout`, `drag`, `dropside` and `openside` are stored per workspace on
+# top of a global value; `border`, `corners` and the grab area stay global, because they
 # are chrome rather than behaviour and Hyprland has no per-workspace notion of
 # them either. Only the layout is genuinely per workspace in Hyprland (a
 # workspace rule); the other two are global options, so the effective values are
@@ -138,7 +138,7 @@ GLOBAL_FILE="$STORE_DIR/global.json"
 OVERRIDES_FILE="$STORE_DIR/overrides.json"
 CONFIG_FILE="$STORE_DIR/config.json"
 
-SCOPED_KEYS=(layout drag dropside)
+SCOPED_KEYS=(layout drag dropside openside)
 
 write_store() { # $1 = file, stdin = JSON
   mkdir -p "$STORE_DIR"
@@ -156,12 +156,22 @@ write_store() { # $1 = file, stdin = JSON
 # snapshot is taken while the values are still untouched, and taken again after
 # every reload, which is the moment they are known to match the config.
 capture_defaults() {
-  [[ -f $CONFIG_FILE ]] && return 0
+  # A version that adds a setting finds an older snapshot with no answer for it.
+  # Only the missing keys are read, and reading them now is safe for exactly the
+  # reason the snapshot exists: this plugin has never written them, so the
+  # runtime still is the config. Keys already snapshotted keep their answer.
+  [[ -f $CONFIG_FILE ]] && jq -e --argjson keys "$(printf '%s\n' "${SCOPED_KEYS[@]}" | jq -Rcn '[inputs]')" \
+    '. as $have | all($keys[]; . as $k | $have | has($k))' "$CONFIG_FILE" >/dev/null 2>&1 && return 0
+
   jq -cn \
     --arg layout "$(hyprctl getoption general:layout -j | jq -r '.str')" \
     --argjson drag "$(opt_bool general:resize_on_border)" \
     --argjson dropside "$(opt_bool dwindle:precise_mouse_move)" \
-    '{layout: $layout, drag: $drag, dropside: $dropside}' | write_store "$CONFIG_FILE"
+    --argjson smartSplit "$(opt_bool dwindle:smart_split)" \
+    --argjson useActive "$(opt_bool dwindle:use_active_for_splits)" \
+    --argjson kept "$([[ -f $CONFIG_FILE ]] && cat "$CONFIG_FILE" || echo '{}')" \
+    '{layout: $layout, drag: $drag, dropside: $dropside,
+      openside: ($smartSplit and ($useActive | not))} + $kept' | write_store "$CONFIG_FILE"
 }
 
 recapture_defaults() { # only right after a reload, where runtime == config
@@ -273,6 +283,22 @@ apply_global_options() { # $1 = grab area (optional) — for the active workspac
     set_resize_on_border false
   fi
   eval_lua "hl.config({ dwindle = { precise_mouse_move = $(effective "$ws" dropside) } })"
+
+  # One setting, two options, because neither is the behaviour on its own:
+  # `smart_split` decides the side by cursor, `use_active_for_splits` decides
+  # whether the pane under the cursor is even the one being split. Leave the
+  # second alone and "open where the mouse is" lands on the focused pane
+  # instead, which is the surprise the setting exists to remove.
+  #
+  # Off writes `use_active_for_splits = true`, Hyprland's own default rather
+  # than a snapshot: a config that turns it off by hand is rare enough that
+  # carrying a fourth stored value for it costs more than it buys, and reset is
+  # the documented way back to ~/.config/hypr/.
+  if [[ $(effective "$ws" openside) == true ]]; then
+    eval_lua "hl.config({ dwindle = { smart_split = true, use_active_for_splits = false } })"
+  else
+    eval_lua "hl.config({ dwindle = { smart_split = false, use_active_for_splits = true } })"
+  fi
 }
 
 apply_workspace() { # $1 = workspace id, $2 = grab area (optional)
@@ -283,7 +309,7 @@ apply_workspace() { # $1 = workspace id, $2 = grab area (optional)
   return 0
 }
 
-# layout dwindle|scrolling|default, drag/dropside on|off|default. `default` is
+# layout dwindle|scrolling|default, drag/dropside/openside on|off|default. `default` is
 # the third state of the panel's switches: not a value of its own, the absence
 # of one — at workspace scope it falls back to the global value, at global scope
 # to ~/.config/hypr/.
@@ -291,8 +317,8 @@ store_value() { # $1 = key, $2 = user value → JSON, or empty for `default`
   case "$1:$2" in
     *:default)                return 0 ;;
     layout:dwindle|layout:scrolling) printf '"%s"' "$2" ;;
-    drag:on|dropside:on)      printf 'true' ;;
-    drag:off|dropside:off)    printf 'false' ;;
+    drag:on|dropside:on|openside:on)    printf 'true' ;;
+    drag:off|dropside:off|openside:off) printf 'false' ;;
     layout:*)  die "expected dwindle, scrolling or default, got: $2" ;;
     *)         die "expected on, off or default, got: $2" ;;
   esac
@@ -300,7 +326,7 @@ store_value() { # $1 = key, $2 = user value → JSON, or empty for `default`
 
 cmd_set() {
   local key=${1:-} value=${2:-} scope=all ws="" grab="" json
-  [[ -n $key && -n $value ]] || die "usage: set <layout|drag|dropside> <value> [--workspace [id] | --all]"
+  [[ -n $key && -n $value ]] || die "usage: set <layout|drag|dropside|openside> <value> [--workspace [id] | --all]"
   # shellcheck disable=SC2076
   [[ " ${SCOPED_KEYS[*]} " =~ " $key " ]] || die "unknown setting: $key"
   shift 2 || true
@@ -417,13 +443,15 @@ case "$cmd" in
       --argjson borderSize "$(opt_int general:border_size)" \
       --argjson rounding "$(opt_int decoration:rounding)" \
       --argjson dropAnySide "$(opt_bool dwindle:precise_mouse_move)" \
+      --argjson openAnySide "$(opt_bool dwindle:smart_split)" \
       --arg layout "$(active_layout)" \
       --argjson activeWorkspace "$(active_workspace)" \
       --argjson workspaces "$(hyprctl workspaces -j | jq -c '[.[].id] | sort')" \
       --argjson global "$(read_global)" \
       --argjson overrides "$(read_overrides)" \
       '{enabled: $enabled, grabArea: $grabArea, borderSize: $borderSize, rounding: $rounding,
-        dropAnySide: $dropAnySide, layout: $layout, activeWorkspace: $activeWorkspace,
+        dropAnySide: $dropAnySide, openAnySide: $openAnySide,
+        layout: $layout, activeWorkspace: $activeWorkspace,
         workspaces: $workspaces, global: $global, overrides: $overrides}'
     ;;
   set) cmd_set "$@" ;;

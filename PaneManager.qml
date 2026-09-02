@@ -97,6 +97,10 @@ Panel {
     dropside: {
       on: "Dropping a dragged pane on another tiles it above, below or beside, by cursor position. The half it will take is shaded while you drag.",
       off: "A dropped pane only ever tiles left or right."
+    },
+    openside: {
+      on: "A new pane splits whatever is under the mouse, on the side the mouse is nearest — the same rule dropping one already follows.",
+      off: "A new pane always splits the focused one, on the side your config picked. The mouse has no say."
     }
   })
 
@@ -424,7 +428,7 @@ Panel {
           visible: root.tab === "panes"
           spacing: Style.space(12)
 
-          // No caption above these three: titled rows say what the tab holds
+          // No caption above these four: titled rows say what the tab holds
           // better than a sentence repeating the tab's name.
           ScopedSetting {
             Layout.fillWidth: true
@@ -450,6 +454,25 @@ Panel {
             foreground: root.barForeground
             fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
             onChanged: function(v) { root.setScoped("drag", v) }
+          }
+
+          // Above its twin because opening comes before dragging in a pane's
+          // life, and because the pair is one rule read twice: `any side` is
+          // this panel's word for "four directions, by the cursor".
+          ScopedSetting {
+            Layout.fillWidth: true
+            label: "Open to any side"
+            badge: root.badgeOf("openside")
+            description: root.scopeScrolling
+              ? "Not available while this scope is on the scrolling layout: a new pane joins the row rather than splitting anything."
+              : root.describe("openside")
+            options: root.scopeOptions
+            value: root.scopeScrolling ? "off" : root.storedOf("openside")
+            interactive: !root.busy && !root.scopeScrolling
+            opacity: root.scopeScrolling ? 0.45 : 1
+            foreground: root.barForeground
+            fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+            onChanged: function(v) { root.setScoped("openside", v) }
           }
 
           ScopedSetting {
