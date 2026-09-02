@@ -114,10 +114,16 @@ pane is about to take, live, while you drag — see [Drop indicator](#drop-indic
 
 ## The panel
 
-Left-clicking the bar icon opens it.
+Left-clicking the bar icon opens it. **Apply to** sits above three tabs —
+**Panes**, **Border** and **Reset** — because it scopes the pane settings and
+would be easy to set and forget inside one of them. The panel reopens on the tab
+you left it on, until the shell restarts.
 
-- **Apply to** — `ws <id>` or `all`: where the three switches below write. See
-  [Per workspace, or everywhere](#per-workspace-or-everywhere).
+- **Apply to** — `ws <id>` or `all`: where the three switches in **Panes**
+  write. See [Per workspace, or everywhere](#per-workspace-or-everywhere).
+
+**Panes**
+
 - **Scrolling layout** — `dwindle` (Off) or `scrolling` (On), written as
   workspace rules. On, what reads a split tree goes quiet: the drop indicator
   stops drawing and **Drop to any side** greys out and reads off, though the
@@ -129,11 +135,18 @@ Left-clicking the bar icon opens it.
   ever tiles left or right. On, it tiles above and below too, by cursor
   position, and the landing spot is shaded while you drag. Gates both halves at
   once: the overlay stays quiet whenever this is off.
+
+**Border**, session-wide: Hyprland keeps one border for every workspace, so
+this tab ignores **Apply to**.
+
 - **Thickness** — border width in px (`general:border_size`)
 - **Corners** — Square or Round (`decoration:rounding`). The shell mirrors this
   into its own chrome but only re-reads it at startup and on a theme change, so
   the plugin nudges `Style.scheduleRefresh()` after every change — otherwise the
   panel telling you "Square" would still be drawn with round corners itself.
+
+**Reset**
+
 - **Reset this workspace** / **Reset all workspaces** — drop the overrides,
   reload the config, then restore the default split ratios. `--all` drops the
   global values too, so it is the way back to `~/.config/hypr/` in full. They
