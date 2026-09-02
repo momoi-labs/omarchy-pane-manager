@@ -31,6 +31,10 @@ Panel {
   // The layout of the active workspace, not the global default: a workspace
   // rule can pin one workspace to scrolling while the rest stay on dwindle.
   property string layout: "dwindle"
+  // The tab the panel reopens on. Lives as long as the shell does: a popup
+  // that closes on focus loss is reopened to carry on with what you were
+  // doing, and a reload is a fresh start.
+  property string tab: "panes"
   property string statusMessage: ""
   property bool busy: false
 
@@ -355,33 +359,30 @@ Panel {
           }
         }
 
-        // Scope picker. Two groups rather than one row of chips with `all` on
-        // the end: `all` is not another workspace, and reading it as one is how
-        // you change every workspace meaning to change this one. A Flow, not
-        // the shell's ButtonGroup, because the workspace list is however many
-        // are open and a Row of them would run off the panel.
-        RowLayout {
+        // Scope picker. Above the tab strip rather than inside a tab: it scopes
+        // the pane settings, and a control that governs the panel has to stay
+        // visible from every tab or it gets set once and forgotten.
+        //
+        // Two groups of chips rather than one row with `all` on the end: `all`
+        // is not another workspace, and reading it as one is how you change
+        // every workspace meaning to change this one. A Flow, not the shell's
+        // ButtonGroup, because the workspace list is however many are open and
+        // a Row of them would run off the panel.
+        Group {
           Layout.fillWidth: true
-          spacing: Style.space(10)
-
-          Text {
-            Layout.alignment: Qt.AlignTop
-            Layout.topMargin: Style.space(6)
-            text: "APPLY TO"
-            color: Qt.darker(root.barForeground, 1.4)
-            font.family: root.bar ? root.bar.fontFamily : Style.font.family
-            font.pixelSize: Style.font.caption
-            font.bold: true
-            font.letterSpacing: 1.1
-          }
+          label: "APPLY TO"
+          badge: root.scopeIsAll ? "ALL" : "WS " + root.scope
+          description: root.scopeIsAll
+            ? "Changing a setting here changes it everywhere, and drops the workspaces' own answers."
+            : "Scopes the pane settings to workspace " + root.scope + ". Border is session-wide and ignores this."
+          foreground: root.barForeground
+          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
 
           Flow {
             Layout.fillWidth: true
+            Layout.topMargin: Style.spacing.xs
             spacing: Style.spacing.md
 
-            // Two blocks, not one: `all` is not another workspace, and reading
-            // it as one is how you change every workspace meaning to change
-            // this one. The Flow wraps them when the workspace list gets long.
             Segmented {
               options: root.workspaceOptions
               value: root.scopeIsAll ? "" : root.scope
@@ -402,143 +403,169 @@ Panel {
           }
         }
 
-        Text {
+        Tabs {
           Layout.fillWidth: true
-          text: root.scopeIsAll
-            ? "Changing a setting here changes it everywhere, and drops the workspaces' own answers."
-            : "Changing a setting here answers it for workspace " + root.scope + " only. Default hands it back to the global one."
-          color: Qt.darker(root.barForeground, 1.5)
-          font.family: root.bar ? root.bar.fontFamily : Style.font.family
-          font.pixelSize: Style.font.caption
-          wrapMode: Text.WordWrap
-        }
-
-        ScopedSetting {
-          Layout.fillWidth: true
-          label: "Scrolling layout"
-          badge: root.badgeOf("layout")
-          description: root.describe("layout")
-          options: root.scopeOptions
-          value: root.storedOf("layout")
-          interactive: !root.busy
+          options: [
+            { value: "panes", label: "Panes", tooltip: "How panes split, resize and land when you drag one" },
+            { value: "border", label: "Border", tooltip: "Border thickness and corner style" },
+            { value: "reset", label: "Reset", tooltip: "Put a mangled layout back" }
+          ]
+          value: root.tab
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          onChanged: function(v) { root.setScoped("layout", v) }
+          onChanged: function(v) { root.tab = v }
         }
 
-        ScopedSetting {
+        // The three tabs. Plain visibility rather than a Loader: the panel is
+        // small, so keeping every tab built makes switching cost nothing and
+        // rebuilds nothing on the way back.
+        ColumnLayout {
           Layout.fillWidth: true
-          label: "Drag the border"
-          badge: root.badgeOf("drag")
-          description: root.describe("drag")
-          options: root.scopeOptions
-          value: root.storedOf("drag")
-          interactive: !root.busy
+          visible: root.tab === "panes"
+          spacing: Style.space(12)
+
+          // No caption above these three: titled rows say what the tab holds
+          // better than a sentence repeating the tab's name.
+          ScopedSetting {
+            Layout.fillWidth: true
+            label: "Scrolling layout"
+            badge: root.badgeOf("layout")
+            description: root.describe("layout")
+            options: root.scopeOptions
+            value: root.storedOf("layout")
+            interactive: !root.busy
+            foreground: root.barForeground
+            fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+            onChanged: function(v) { root.setScoped("layout", v) }
+          }
+
+          ScopedSetting {
+            Layout.fillWidth: true
+            label: "Drag the border"
+            badge: root.badgeOf("drag")
+            description: root.describe("drag")
+            options: root.scopeOptions
+            value: root.storedOf("drag")
+            interactive: !root.busy
+            foreground: root.barForeground
+            fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+            onChanged: function(v) { root.setScoped("drag", v) }
+          }
+
+          ScopedSetting {
+            Layout.fillWidth: true
+            label: "Drop to any side"
+            badge: root.badgeOf("dropside")
+            description: root.scopeScrolling
+              ? "Not available while this scope is on the scrolling layout: a dropped pane joins the row rather than splitting anything."
+              : root.describe("dropside")
+            options: root.scopeOptions
+            // Reads off on a scrolling workspace even when the option is on:
+            // the row describes what the workspace does, and it does not do
+            // this. The stored value is left alone, so it comes back with
+            // dwindle.
+            value: root.scopeScrolling ? "off" : root.storedOf("dropside")
+            interactive: !root.busy && !root.scopeScrolling
+            // `interactive` alone blocks the click but looks untouched, so the
+            // whole group — rail included — dims at the shell's own 0.45 to
+            // say why it stopped responding.
+            opacity: root.scopeScrolling ? 0.45 : 1
+            foreground: root.barForeground
+            fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+            onChanged: function(v) { root.setScoped("dropside", v) }
+          }
+        }
+
+        // No label on this group or the next: the tab already carries the name,
+        // and a group repeating it titles the same thing twice. What a tab name
+        // cannot say — the scope, and that a reset is also the way out of the
+        // scrolling layout — stays as the description.
+        Group {
+          Layout.fillWidth: true
+          visible: root.tab === "border"
+          badge: "EVERY WORKSPACE"
+          description: "Hyprland keeps one border for the whole session, so this is not scoped."
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          onChanged: function(v) { root.setScoped("drag", v) }
+
+          RowLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: Style.spacing.xs
+            spacing: Style.space(16)
+
+            NumberField {
+              label: "Thickness (px)"
+              value: root.borderSize
+              from: 0
+              to: root.maxBorderSize
+              enabled: !root.busy
+              foreground: root.barForeground
+              fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+              onModified: function(v) { root.setBorderSize(v) }
+            }
+
+            ColumnLayout {
+              Layout.fillWidth: true
+              Layout.alignment: Qt.AlignTop
+              spacing: Style.spacing.md
+
+              Text {
+                text: "Corners"
+                color: Qt.darker(root.barForeground, 1.4)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+              }
+
+              Segmented {
+                enabled: !root.busy
+                options: [
+                  { value: "square", label: "Square", tooltip: "No corner radius" },
+                  { value: "round", label: "Round", tooltip: "Rounded corners at " + root.roundedRadius + "px" }
+                ]
+                value: root.rounding > 0 ? "round" : "square"
+                foreground: root.barForeground
+                fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+                onChanged: function(v) { root.setCorners(v) }
+              }
+            }
+          }
         }
 
-        ScopedSetting {
+        Group {
           Layout.fillWidth: true
-          label: "Drop to any side"
-          badge: root.badgeOf("dropside")
-          description: root.scopeScrolling
-            ? "Not available while this scope is on the scrolling layout: a dropped pane joins the row rather than splitting anything."
-            : root.describe("dropside")
-          options: root.scopeOptions
-          // Reads off on a scrolling workspace even when the option is on: the
-          // row describes what the workspace does, and it does not do this. The
-          // stored value is left alone, so it comes back with dwindle.
-          value: root.scopeScrolling ? "off" : root.storedOf("dropside")
-          interactive: !root.busy && !root.scopeScrolling
-          // `interactive` alone blocks the click but looks untouched, so the row
-          // dims at the shell's own 0.45 to say why it stopped responding.
-          opacity: root.scopeScrolling ? 0.45 : 1
+          visible: root.tab === "reset"
+          description: "Puts the layout and the default split ratios back — also the way out of the scrolling layout."
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          onChanged: function(v) { root.setScoped("dropside", v) }
-        }
 
-        PanelSeparator { Layout.fillWidth: true; foreground: root.barForeground }
-
-        PanelSectionHeader {
-          text: "BORDER · EVERY WORKSPACE"
-          foreground: root.barForeground
-          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-        }
-
-        RowLayout {
-          Layout.fillWidth: true
-          spacing: Style.space(16)
-
-          NumberField {
-            label: "Thickness (px)"
-            value: root.borderSize
-            from: 0
-            to: root.maxBorderSize
+          Button {
+            Layout.fillWidth: true
+            Layout.topMargin: Style.spacing.xs
+            text: "Reset this workspace"
+            iconText: "󰑓"
+            leftAlign: true
+            bordered: true
+            focusable: true
             enabled: !root.busy
             foreground: root.barForeground
             fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-            onModified: function(v) { root.setBorderSize(v) }
+            tooltipText: "Restore the layout and the default split ratios on the active workspace"
+            onClicked: root.resetWorkspace()
           }
 
-          ColumnLayout {
+          Button {
             Layout.fillWidth: true
-            Layout.alignment: Qt.AlignTop
-            spacing: Style.spacing.md
-
-            Text {
-              text: "Corners"
-              color: Qt.darker(root.barForeground, 1.4)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.bodySmall
-            }
-
-            Segmented {
-              enabled: !root.busy
-              options: [
-                { value: "square", label: "Square", tooltip: "No corner radius" },
-                { value: "round", label: "Round", tooltip: "Rounded corners at " + root.roundedRadius + "px" }
-              ]
-              value: root.rounding > 0 ? "round" : "square"
-              foreground: root.barForeground
-              fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-              onChanged: function(v) { root.setCorners(v) }
-            }
+            text: "Reset all workspaces"
+            iconText: "󰑐"
+            leftAlign: true
+            bordered: true
+            focusable: true
+            enabled: !root.busy
+            foreground: root.barForeground
+            fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+            tooltipText: "Restore the layout and the default split ratios everywhere, and reload border settings"
+            onClicked: root.resetAll()
           }
-        }
-
-        PanelSeparator { Layout.fillWidth: true; foreground: root.barForeground }
-
-        PanelSeparator { Layout.fillWidth: true; foreground: root.barForeground }
-
-        Button {
-          Layout.fillWidth: true
-          text: "Reset this workspace"
-          iconText: "󰑓"
-          leftAlign: true
-          bordered: true
-          focusable: true
-          enabled: !root.busy
-          foreground: root.barForeground
-          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          tooltipText: "Restore the layout and the default split ratios on the active workspace"
-          onClicked: root.resetWorkspace()
-        }
-
-        Button {
-          Layout.fillWidth: true
-          text: "Reset all workspaces"
-          iconText: "󰑐"
-          leftAlign: true
-          bordered: true
-          focusable: true
-          enabled: !root.busy
-          foreground: root.barForeground
-          fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-          tooltipText: "Restore the layout and the default split ratios everywhere, and reload border settings"
-          onClicked: root.resetAll()
         }
       }
     }
