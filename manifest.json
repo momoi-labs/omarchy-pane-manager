@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "dev.momoi-labs.pane-manager",
   "name": "Pane Manager",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "Sebastian Webber",
   "license": "MIT",
   "description": "Manage tiled panes from the bar: resize them by dragging the divider with your mouse, see where a dragged pane will land before you drop it, set the border thickness and corner style, and put a mangled layout back the way it was.",
