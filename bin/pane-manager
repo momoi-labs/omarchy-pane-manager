@@ -12,7 +12,7 @@
 #   Kept for keybindings written against 1.0:
 #   pane-manager enable [grabArea] | disable | toggle [grabArea]
 #   pane-manager dropside <bool>
-#   pane-manager layout <name> [--workspace | --all]
+#   pane-manager layout <dwindle|scrolling|master|monocle> [--workspace | --all]
 #
 # Scope. `layout`, `drag`, `dropside` and `openside` are stored per workspace on
 # top of a global value; `border`, `corners` and the grab area stay global, because they
@@ -309,17 +309,18 @@ apply_workspace() { # $1 = workspace id, $2 = grab area (optional)
   return 0
 }
 
-# layout dwindle|scrolling|default, drag/dropside/openside on|off|default. `default` is
+# layout dwindle|scrolling|master|monocle|default, drag/dropside/openside
+# on|off|default. `default` is
 # the third state of the panel's switches: not a value of its own, the absence
 # of one — at workspace scope it falls back to the global value, at global scope
 # to ~/.config/hypr/.
 store_value() { # $1 = key, $2 = user value → JSON, or empty for `default`
   case "$1:$2" in
     *:default)                return 0 ;;
-    layout:dwindle|layout:scrolling) printf '"%s"' "$2" ;;
+    layout:dwindle|layout:scrolling|layout:master|layout:monocle) printf '"%s"' "$2" ;;
     drag:on|dropside:on|openside:on)    printf 'true' ;;
     drag:off|dropside:off|openside:off) printf 'false' ;;
-    layout:*)  die "expected dwindle, scrolling or default, got: $2" ;;
+    layout:*)  die "expected dwindle, scrolling, master, monocle or default, got: $2" ;;
     *)         die "expected on, off or default, got: $2" ;;
   esac
 }

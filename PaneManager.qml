@@ -29,7 +29,8 @@ Panel {
   property int rounding: 0
   property bool dropAnySide: false
   // The layout of the active workspace, not the global default: a workspace
-  // rule can pin one workspace to scrolling while the rest stay on dwindle.
+  // rule can pin one workspace to scrolling or master while the rest stay on
+  // dwindle.
   property string layout: "dwindle"
   // The tab the panel reopens on. Lives as long as the shell does: a popup
   // that closes on focus loss is reopened to carry on with what you were
@@ -85,10 +86,21 @@ Panel {
     : [{ value: "default", label: "Default", tooltip: "Follow the global setting" },
        { value: "off", label: "Off" }, { value: "on", label: "On" }]
 
+  // The layout row's four answers. Hyprland's names, because they are what a
+  // workspace rule takes and what `hyprctl activeworkspace` reports back.
+  readonly property var layoutOptions: [
+    { value: "dwindle", label: "dwindle", tooltip: "New panes split the pane they land in" },
+    { value: "scrolling", label: "scrolling", tooltip: "New panes join a row that scrolls sideways, niri style" },
+    { value: "master", label: "master", tooltip: "One master pane on the left, the rest stacked on the right" },
+    { value: "monocle", label: "monocle", tooltip: "One pane at a time, the others behind it" }
+  ]
+
   readonly property var settingText: ({
     layout: {
-      on: "New panes join a row that scrolls sideways, niri style.",
-      off: "New panes split the pane they land in, dwindle style."
+      dwindle: "New panes split the pane they land in.",
+      scrolling: "New panes join a row that scrolls sideways, niri style.",
+      master: "One master pane on the left, the rest stacked on the right.",
+      monocle: "One pane fills the workspace; the others wait behind it."
     },
     drag: {
       on: "Grab the divider to resize, no modifier held, with a " + grabArea + "px handle.",
@@ -104,17 +116,13 @@ Panel {
     }
   })
 
-  // The store speaks Hyprland's vocabulary; the switches speak on / off, so a
-  // scrolling layout is the layout row's "on".
+  // The store speaks Hyprland's vocabulary. The three switches speak on / off;
+  // the layout row speaks Hyprland's own names, so it passes through.
   function uiValue(key, raw) {
-    if (key === "layout") return String(raw) === "scrolling" ? "on" : "off"
+    if (key === "layout") return String(raw || "dwindle")
     return raw === true ? "on" : "off"
   }
-  function cliValue(key, value) {
-    if (value === "default") return "default"
-    if (key === "layout") return value === "on" ? "scrolling" : "dwindle"
-    return value
-  }
+  function cliValue(key, value) { return value }
 
   // What the global value is, whoever set it — the helper folds ~/.config/hypr/
   // in, so this is never empty.
@@ -135,6 +143,9 @@ Panel {
 
   function badgeOf(key) {
     if (scopeIsAll) return "ALL"
+    // The layout tiles carry their own DEFAULT pin, so the badge only says
+    // which scope is being edited.
+    if (key === "layout") return "WS " + scope
     return storedOf(key) === "default"
       ? "DEFAULT · " + globalOf(key).toUpperCase()
       : "WS " + scope
@@ -146,9 +157,10 @@ Panel {
     return "Follows the global setting: " + text.charAt(0).toLowerCase() + text.slice(1)
   }
 
-  // A workspace on the scrolling layout has no split tree, so the row that
-  // depends on splitting says so rather than pretending to work.
-  readonly property bool scopeScrolling: effectiveOf("layout") === "on"
+  // Only dwindle has a split tree. On any other layout the two rows that write
+  // `dwindle:*` options say so rather than pretending to work.
+  readonly property bool scopeNoTree: effectiveOf("layout") !== "dwindle"
+  readonly property string noTreeText: "Not available while this scope is on the " + effectiveOf("layout") + " layout: there is no split tree for this to act on."
 
   readonly property string icon: "󰕰"  // nf-md-border_all
 
@@ -430,17 +442,29 @@ Panel {
 
           // No caption above these four: titled rows say what the tab holds
           // better than a sentence repeating the tab's name.
-          ScopedSetting {
+          //
+          // The layout row is a ScopedSetting with the Segmented swapped for
+          // tiles: four layouts are four pictures, not four words (ADR 0003).
+          Group {
             Layout.fillWidth: true
-            label: "Scrolling layout"
+            prominent: true
+            label: "Layout"
             badge: root.badgeOf("layout")
             description: root.describe("layout")
-            options: root.scopeOptions
-            value: root.storedOf("layout")
-            interactive: !root.busy
             foreground: root.barForeground
             fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-            onChanged: function(v) { root.setScoped("layout", v) }
+
+            LayoutPicker {
+              Layout.fillWidth: true
+              Layout.topMargin: Style.spacing.xs
+              options: root.layoutOptions
+              value: root.storedOf("layout")
+              inherited: root.scopeIsAll ? "" : root.globalOf("layout")
+              enabled: !root.busy
+              foreground: root.barForeground
+              fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+              onChanged: function(v) { root.setScoped("layout", v) }
+            }
           }
 
           ScopedSetting {
@@ -463,13 +487,11 @@ Panel {
             Layout.fillWidth: true
             label: "Open to any side"
             badge: root.badgeOf("openside")
-            description: root.scopeScrolling
-              ? "Not available while this scope is on the scrolling layout: a new pane joins the row rather than splitting anything."
-              : root.describe("openside")
+            description: root.scopeNoTree ? root.noTreeText : root.describe("openside")
             options: root.scopeOptions
-            value: root.scopeScrolling ? "off" : root.storedOf("openside")
-            interactive: !root.busy && !root.scopeScrolling
-            opacity: root.scopeScrolling ? 0.45 : 1
+            value: root.scopeNoTree ? "off" : root.storedOf("openside")
+            interactive: !root.busy && !root.scopeNoTree
+            opacity: root.scopeNoTree ? 0.45 : 1
             foreground: root.barForeground
             fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
             onChanged: function(v) { root.setScoped("openside", v) }
@@ -479,20 +501,18 @@ Panel {
             Layout.fillWidth: true
             label: "Drop to any side"
             badge: root.badgeOf("dropside")
-            description: root.scopeScrolling
-              ? "Not available while this scope is on the scrolling layout: a dropped pane joins the row rather than splitting anything."
-              : root.describe("dropside")
+            description: root.scopeNoTree ? root.noTreeText : root.describe("dropside")
             options: root.scopeOptions
-            // Reads off on a scrolling workspace even when the option is on:
+            // Reads off on a workspace without a split tree even when the option is on:
             // the row describes what the workspace does, and it does not do
             // this. The stored value is left alone, so it comes back with
             // dwindle.
-            value: root.scopeScrolling ? "off" : root.storedOf("dropside")
-            interactive: !root.busy && !root.scopeScrolling
+            value: root.scopeNoTree ? "off" : root.storedOf("dropside")
+            interactive: !root.busy && !root.scopeNoTree
             // `interactive` alone blocks the click but looks untouched, so the
             // whole group — rail included — dims at the shell's own 0.45 to
             // say why it stopped responding.
-            opacity: root.scopeScrolling ? 0.45 : 1
+            opacity: root.scopeNoTree ? 0.45 : 1
             foreground: root.barForeground
             fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
             onChanged: function(v) { root.setScoped("dropside", v) }
@@ -557,7 +577,7 @@ Panel {
         Group {
           Layout.fillWidth: true
           visible: root.tab === "reset"
-          description: "Puts the layout and the default split ratios back — also the way out of the scrolling layout."
+          description: "Puts the layout and the default split ratios back — also the way back to the layout your config asks for."
           foreground: root.barForeground
           fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
 
