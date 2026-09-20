@@ -41,20 +41,21 @@ the first decides the side, the second decides whether the pane under the cursor
 is the one being split at all. Set only the first and a new pane still lands on
 the focused pane, which is the surprise the row exists to remove.
 
-### Switch to the scrolling layout
+### Pick the layout
 
-Hyprland ships a niri-like `scrolling` layout: new panes join a row that scrolls
-sideways instead of splitting the pane they land in. The switch applies it to
-every workspace; `bin/pane-manager layout scrolling --workspace` does just the
-active one, for a keybinding.
+Hyprland ships four tiled layouts, and the **Layout** row shows all four as
+small drawings: `dwindle` splits the pane a new one lands in, `scrolling` is a
+niri-like row that scrolls sideways, `master` keeps one big pane with the rest
+stacked beside it, `monocle` shows one pane at a time. The row applies to the
+scope in **Apply to**; `bin/pane-manager layout scrolling --workspace` does just
+the active workspace, for a keybinding.
 
-Splitting is dwindle's, so on a scrolling workspace the panel turns off what
-depends on it — the drop indicator, **Open to any side** and **Drop to any
-side**. **Drag the border**
-is layout-agnostic and keeps working, and the two resets stay available: they
-are the way back.
+Splitting is dwindle's, so on any other layout the panel turns off what depends
+on it — the drop indicator, **Open to any side** and **Drop to any side**.
+**Drag the border** is layout-agnostic and keeps working, and the two resets
+stay available: they are the way back.
 
-Hyprland tracks the layout per workspace, so the switch writes the same
+Hyprland tracks the layout per workspace, so the row writes the same
 per-workspace rules as Omarchy's own
 `omarchy-hyprland-workspace-layout-toggle`, in
 `~/.local/state/omarchy/workspace-layouts/<id>.lua`. The two agree, and the
@@ -103,7 +104,7 @@ Width in px and Square/Round corners, applied as you change them.
 ### Undo a mangled layout
 
 Resizing a dwindle tree has no built-in undo. Two buttons put things back, for
-the current workspace or all of them: they drop any scrolling override, reload
+the current workspace or all of them: they drop any layout override, reload
 your Hyprland config, and restore the default split ratios — so they double as a
 way back from anything the panel changed.
 
@@ -140,11 +141,13 @@ you left it on, until the shell restarts.
 
 **Panes**
 
-- **Scrolling layout** — `dwindle` (Off) or `scrolling` (On), written as
-  workspace rules. On, what reads a split tree goes quiet: the drop indicator
-  stops drawing, and **Open to any side** and **Drop to any side** grey out and
-  read off — though the Hyprland options under them are untouched and come back
-  with dwindle.
+- **Layout** — `dwindle`, `scrolling`, `master` or `monocle`, written as
+  workspace rules. At workspace scope the tile of the global layout carries a
+  `DEFAULT` pin, and choosing it drops the workspace's own answer rather than
+  pinning it. Off dwindle, what reads a split tree goes quiet: the drop
+  indicator stops drawing, and **Open to any side** and **Drop to any side**
+  grey out and read off — though the Hyprland options under them are untouched
+  and come back with dwindle.
 - **Drag the border** — `general:resize_on_border` on and off, with the grab
   area from the settings. Off here means off, not "hand everything back": the
   two resets are what returns the border chrome to `~/.config/hypr/`.
@@ -173,7 +176,7 @@ this tab ignores **Apply to**.
 - **Reset this workspace** / **Reset all workspaces** — drop the overrides,
   reload the config, then restore the default split ratios. `--all` drops the
   global values too, so it is the way back to `~/.config/hypr/` in full. They
-  stay enabled on a scrolling workspace, because they are the way off it.
+  stay enabled on every layout, because they are the way back to the config's.
 
 The border chrome is runtime-only, and the resets clear the rest, so they remain
 the reliable way back to your configured state.
@@ -270,7 +273,7 @@ $BIN corners <px>         # global; 0 = square
 $BIN reset [--all]        # overrides, config, then split ratios
 ```
 
-`set` takes `layout` (`dwindle`, `scrolling`, `default`), and `drag`,
+`set` takes `layout` (`dwindle`, `scrolling`, `master`, `monocle`, `default`), and `drag`,
 `dropside` and `openside` (`on`, `off`, `default`), and defaults to `--all`. So
 a keybinding that flips just the workspace you are on is:
 
@@ -289,7 +292,7 @@ $BIN enable [grabArea]    # = set drag on --all
 $BIN disable              # = clears drag, and reverts border chrome to config
 $BIN toggle [grabArea]
 $BIN dropside <bool>      # = set dropside on|off --all
-$BIN layout <dwindle|scrolling> [--workspace | --all]
+$BIN layout <dwindle|scrolling|master|monocle> [--workspace | --all]
 ```
 
 ## Drop indicator
