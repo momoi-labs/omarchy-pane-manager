@@ -107,7 +107,10 @@ Item {
         readonly property bool tinted: root.value === "default" && inheritedTile
 
         width: (row.width + root._seam * (root.options.length - 1)) / root.options.length
-        implicitHeight: body.implicitHeight + verticalPadding * 2 + _reservedBorderTop + _reservedBorderBottom
+        // Extra room at the top so the pin, which hangs into the tile by half
+        // its height, does not sit on the drawing.
+        readonly property real pinRoom: root._pinRise + Style.space(4)
+        implicitHeight: body.implicitHeight + pinRoom + verticalPadding * 2 + _reservedBorderTop + _reservedBorderBottom
 
         tooltipText: root.optionTooltip(modelData) + (inheritedTile ? " — the global layout; choosing it means follow the global" : "")
         selected: root.isSelected(modelData) && !tinted
@@ -132,6 +135,7 @@ Item {
         Column {
           id: body
           anchors.centerIn: parent
+          anchors.verticalCenterOffset: tile.pinRoom / 2
           spacing: Style.spacing.md
 
           LayoutGlyph {
