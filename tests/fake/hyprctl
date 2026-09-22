@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# A stand-in for hyprctl so bin/pane-manager can run without a compositor.
+#
+# Answers the read-only queries from $FAKE_HYPR/state.json and appends every
+# invocation, one per line, to $FAKE_HYPR/calls. Writes (`eval`, `dispatch`,
+# `reload`) are recorded and otherwise ignored: the tests assert on what the
+# helper asked Hyprland to do, and on the store it left behind, not on what a
+# real compositor would have made of it.
+#
+# state.json:
+#   { "options":         { "general:layout": { "str": "dwindle" }, … },
+#     "activeWorkspace": 1,
+#     "workspaces":      [ { "id": 1, "tiledLayout": "dwindle" }, … ],
+#     "clients":         [ { "address": "0x1", "workspace": { "id": 1 }, "floating": false } ],
+#     "activewindow":    { "address": "0x1" } }
+set -euo pipefail
+: "${FAKE_HYPR:?FAKE_HYPR is not set}"
+state="$FAKE_HYPR/state.json"
+printf '%s\n' "$*" >>"$FAKE_HYPR/calls"
+
+case "${1:-}" in
+  getoption)       jq -c --arg k "$2" '.options[$k] // error("no such option: " + $k)' "$state" ;;
+  activeworkspace) jq -c '.activeWorkspace as $a | .workspaces[] | select(.id == $a)' "$state" ;;
+  workspaces)      jq -c '.workspaces' "$state" ;;
+  clients)         jq -c '.clients // []' "$state" ;;
+  activewindow)    jq -c '.activewindow // {}' "$state" ;;
+  eval|dispatch|reload) echo ok ;;
+  *) echo "error: fake hyprctl does not answer: $*"; exit 0 ;;
+esac

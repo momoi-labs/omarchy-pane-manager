@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Opens the panel from this checkout in the running shell on a workspace and
+# screenshots it, for what tests/run cannot see: the panel itself. The shot is
+# the check. The header says where you are, the APPLY TO badge says which
+# workspace a click would edit, and the two must agree.
+#
+#   tests/live [workspace]      → /tmp/pane-manager-ws<N>.png, default 2
+#
+# Swaps the plugin symlink to this checkout and restarts the shell, then puts
+# both back. Restarting is the only way the shell picks up QML changes:
+# omarchy-refresh-shell would also rewrite shell.json.
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+ws=${1:-2}
+link="$HOME/.config/omarchy/plugins/dev.momoi-labs.pane-manager"
+ipc=(quickshell ipc -p /usr/share/omarchy/shell call dev.momoi-labs.pane-manager)
+shot="/tmp/pane-manager-ws$ws.png"
+
+original=$(readlink "$link")
+was_on=$(hyprctl activeworkspace -j | jq -r '.id')
+
+restart_shell() { omarchy-restart-shell >/dev/null 2>&1; sleep 3; }
+focus() { hyprctl dispatch "hl.dsp.focus({ workspace = \"$1\" })" >/dev/null; sleep 0.6; }
+
+restore() {
+  "${ipc[@]}" close >/dev/null 2>&1 || true
+  focus "$was_on"
+  ln -sfn "$original" "$link"
+  restart_shell
+}
+trap restore EXIT
+
+ln -sfn "$root" "$link"
+restart_shell
+focus "$ws"
+"${ipc[@]}" open >/dev/null
+sleep 0.8
+grim "$shot"
+echo "$shot"

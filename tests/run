@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# Runs every test_* function in tests/*.test.sh against bin/pane-manager, with
+# tests/fake/hyprctl standing in for the compositor. Needs bash and jq, the
+# same two things the helper needs.
+#
+#   tests/run              → all of them
+#   tests/run <pattern>    → only the functions whose name matches
+set -uo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+helper="$root/bin/pane-manager"
+filter=${1:-}
+passed=0 failed=0
+
+# ---------------------------------------------------------------- fixtures
+
+# A fresh compositor and an empty store for every test. HOME is redirected
+# too, because the helper writes Omarchy's own workspace-layouts store under
+# it.
+setup() {
+  tmp=$(mktemp -d)
+  export HOME="$tmp/home" XDG_STATE_HOME="$tmp/state" FAKE_HYPR="$tmp/hypr"
+  mkdir -p "$HOME" "$XDG_STATE_HOME" "$FAKE_HYPR"
+  export PATH="$root/tests/fake:$PATH"
+  export STORE="$XDG_STATE_HOME/omarchy/pane-manager"
+  export LAYOUTS="$HOME/.local/state/omarchy/workspace-layouts"
+  : >"$FAKE_HYPR/calls"
+  hypr_state '{
+    "options": {
+      "general:layout": { "str": "dwindle" },
+      "general:resize_on_border": { "bool": false },
+      "general:extend_border_grab_area": { "int": 15 },
+      "general:border_size": { "int": 2 },
+      "decoration:rounding": { "int": 0 },
+      "dwindle:precise_mouse_move": { "bool": false },
+      "dwindle:smart_split": { "bool": false },
+      "dwindle:use_active_for_splits": { "bool": true }
+    },
+    "activeWorkspace": 1,
+    "workspaces": [
+      { "id": 1, "tiledLayout": "dwindle" },
+      { "id": 2, "tiledLayout": "dwindle" },
+      { "id": 3, "tiledLayout": "dwindle" }
+    ],
+    "clients": [],
+    "activewindow": {}
+  }'
+}
+
+teardown() { rm -rf "$tmp"; }
+
+hypr_state() { printf '%s' "$1" >"$FAKE_HYPR/state.json"; }
+# Edit the fake compositor with a jq program, e.g. `hypr '.activeWorkspace = 2'`.
+hypr() { jq -c "$1" "$FAKE_HYPR/state.json" >"$FAKE_HYPR/state.json.tmp" && mv "$FAKE_HYPR/state.json.tmp" "$FAKE_HYPR/state.json"; }
+# Forget what the helper asked so far; the next assertions are about what
+# comes after.
+forget_calls() { : >"$FAKE_HYPR/calls"; }
+
+pm() { "$helper" "$@"; }
+
+# ---------------------------------------------------------------- assertions
+
+fail() { printf '    %s\n' "$1" >&2; return 1; }
+
+assert_eq() { # $1 = expected, $2 = actual, $3 = what
+  [[ $1 == "$2" ]] || fail "${3:-value}: expected '$1', got '$2'"
+}
+
+# `jq -e` treats false and null as failure, so a check that expects false
+# has to compare rather than select: `.x == false`.
+assert_json() { # $1 = file, $2 = jq test
+  [[ -f $1 ]] || { fail "$1: file is missing"; return; }
+  jq -e "$2" "$1" >/dev/null || fail "$1: '$2' failed on $(jq -c . "$1")"
+}
+
+assert_absent() { [[ ! -e $1 ]] || fail "$1: expected it to be gone"; }
+assert_present() { [[ -e $1 ]] || fail "$1: expected it to exist"; }
+
+assert_called() { # $1 = fixed string the call line must contain
+  grep -qF -- "$1" "$FAKE_HYPR/calls" || fail "expected a hyprctl call containing: $1"
+}
+assert_not_called() {
+  ! grep -qF -- "$1" "$FAKE_HYPR/calls" || fail "expected no hyprctl call containing: $1"
+}
+
+assert_fails() { # $1 = fixed string the error must contain, rest = command
+  local want=$1 err; shift
+  if err=$("$@" 2>&1 >/dev/null); then fail "expected failure, but it exited 0"; return; fi
+  [[ $err == *"$want"* ]] || fail "expected the error to contain '$want', got: $err"
+}
+
+# ---------------------------------------------------------------- runner
+
+for file in "$root"/tests/*.test.sh; do
+  # shellcheck source=/dev/null
+  source "$file"
+done
+
+for fn in $(declare -F | awk '{print $3}' | grep '^test_' | sort); do
+  [[ -z $filter || $fn == *$filter* ]] || continue
+  setup
+  if out=$("$fn" 2>&1); then
+    passed=$((passed + 1))
+    printf '  ok   %s\n' "$fn"
+  else
+    failed=$((failed + 1))
+    printf '  FAIL %s\n%s\n' "$fn" "$out"
+  fi
+  teardown
+done
+
+printf '\n%d passed, %d failed\n' "$passed" "$failed"
+[[ $failed -eq 0 ]]

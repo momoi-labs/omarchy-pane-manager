@@ -339,6 +339,21 @@ contents. Omarchy binds it out of the box:
 | `SUPER` + `SHIFT` + arrows | Swap the focused pane in a direction |
 | `SUPER` + `J` | Flip the split direction (the panel's button) |
 
+## Tests
+
+```sh
+tests/run            # the helper, against a fake hyprctl; needs bash and jq
+tests/run layout     # only the tests whose name matches
+tests/live 2         # the panel, live: opens it on workspace 2 and screenshots it
+```
+
+`tests/run` gives every test an empty store and a fake compositor
+(`tests/fake/hyprctl`) that answers queries from a JSON file and records every
+call. Tests assert on the store the helper leaves behind and on what it asked
+Hyprland to do. `tests/live` swaps the plugin symlink to this checkout,
+restarts the shell, and puts both back; the screenshot is the check. See ADR
+0004 for why the split.
+
 ## Notes for hackers
 
 Omarchy 4 runs Hyprland's Lua config parser, which retires the legacy `hyprctl`
