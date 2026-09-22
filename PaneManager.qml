@@ -211,7 +211,14 @@ Panel {
   // the store holds for a workspace are written when it takes focus. Debounced:
   // holding a workspace key walks through several in a row.
   readonly property var focusedWorkspace: Hyprland.focusedWorkspace
-  onFocusedWorkspaceChanged: applyTimer.restart()
+  onFocusedWorkspaceChanged: {
+    // `state` only runs while the panel is open, so this is what keeps
+    // `activeWorkspace` current in between. The scope the panel opens on is
+    // read from it before any refresh has answered: left stale, opening on
+    // workspace 2 scoped every click to the workspace the panel last saw.
+    if (focusedWorkspace) activeWorkspace = focusedWorkspace.id
+    applyTimer.restart()
+  }
 
   Timer {
     id: applyTimer
