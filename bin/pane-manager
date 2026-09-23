@@ -499,8 +499,8 @@ case "$cmd" in
     # The one setting here that is not runtime-only: it is stored per workspace
     # where Omarchy keeps it, so a reload replays it rather than undoing it.
     case "${1:-}" in
-      dwindle|scrolling) ;;
-      *) die "expected dwindle or scrolling, got: ${1:-}" ;;
+      dwindle|scrolling|master|monocle) ;;
+      *) die "expected dwindle, scrolling, master or monocle, got: ${1:-}" ;;
     esac
     case "${2:-}" in
       ""|--all)     cmd_set layout "$1" --all ;;

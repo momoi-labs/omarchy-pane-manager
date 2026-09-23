@@ -205,6 +205,11 @@ test_legacy_commands_land_in_the_store() {
   assert_json "$STORE/global.json" '.dropside == true'
   pm layout scrolling --workspace
   assert_json "$STORE/overrides.json" '.["1"].layout == "scrolling"'
+  # All four, not the two this command shipped with in 1.0: the panel writes
+  # master and monocle, so a keybinding has to be able to as well.
+  pm layout monocle --all
+  assert_json "$STORE/global.json" '.layout == "monocle"'
+  assert_fails 'expected dwindle, scrolling, master or monocle' pm layout tabbed --all
   pm toggle 10
   assert_json "$STORE/global.json" '.drag == null'
   assert_called reload
