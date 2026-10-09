@@ -55,6 +55,17 @@ test_layout_default_for_all_unpins_everything() {
   assert_called reload
 }
 
+test_apply_leaves_an_unchanged_layout_file_alone() {
+  # Hyprland auto-reloads when a config file it loaded is written, even with the
+  # same text, and the reload runs `apply` again: rewriting it looped.
+  pm set layout scrolling --all
+  touch -d '2000-01-01' "$LAYOUTS/1.lua"
+  forget_calls
+  pm apply
+  assert_eq 2000 "$(date -r "$LAYOUTS/1.lua" +%Y)" "1.lua modified year"
+  assert_not_called workspace_rule
+}
+
 test_the_default_layout_is_never_pinned() {
   # Nobody chose dwindle: the store is empty and the config says dwindle, so
   # no rule is written that would outlive a later edit to the config.
