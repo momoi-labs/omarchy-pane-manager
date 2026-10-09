@@ -239,7 +239,13 @@ sync_layout_rule() { # $1 = workspace id — write-only; see sync_layout_scope
   layout=$(explicit_layout "$ws")
   [[ -n $layout ]] || return 0
   mkdir -p "$LAYOUTS_DIR"
-  printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ws" "$layout" >"$LAYOUTS_DIR/$ws.lua"
+  local rule
+  rule=$(printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })' "$ws" "$layout")
+  # Hyprland loads this file as config and auto-reloads when it changes, even to
+  # the same text, and a reload fires the workspace change that runs `apply`
+  # again. Rewriting an unchanged rule made a reload loop.
+  [[ $(cat "$LAYOUTS_DIR/$ws.lua" 2>/dev/null) == "$rule" ]] && return 0
+  printf '%s\n' "$rule" >"$LAYOUTS_DIR/$ws.lua"
   eval_lua "hl.workspace_rule({ workspace = \"$ws\", layout = \"$layout\" })"
 }
 
